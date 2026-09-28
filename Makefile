@@ -1,4 +1,6 @@
-ANDROID_TV_DEVICE ?= 192.168.1.4:5555
+-include Makefile.local
+
+ANDROID_TV_DEVICE ?=
 ANDROID_EMULATOR_DEVICE ?= emulator-5554
 ADB ?= adb
 GRADLE ?= ./gradlew
@@ -8,7 +10,7 @@ PACKAGE := fr.bonamy.movies
 COMPONENT := $(PACKAGE)/.MainActivity
 
 .DEFAULT_GOAL := build
-.PHONY: help build check install deploy run install-emulator deploy-emulator run-emulator devices clean
+.PHONY: help build check install deploy run install-emulator deploy-emulator run-emulator devices clean require-tv
 
 help:
 	@echo "make build             Build the debug APK (default)"
@@ -20,7 +22,8 @@ help:
 	@echo "make run-emulator      Restart the installed app on emulator"
 	@echo "make devices           List ADB devices"
 	@echo "make clean             Clean build outputs"
-	@echo "Override ANDROID_TV_DEVICE=IP:PORT or ANDROID_EMULATOR_DEVICE=SERIAL as needed."
+	@echo "Set ANDROID_TV_DEVICE=HOST:PORT or configure ignored Makefile.local."
+	@echo "Override ANDROID_EMULATOR_DEVICE=SERIAL for a different emulator."
 
 build:
 	$(GRADLE) :app:assembleDebug
@@ -28,13 +31,16 @@ build:
 check:
 	$(GRADLE) check :app:lintDebug :app:assembleDebug
 
-install: build
+require-tv:
+	@test -n "$(ANDROID_TV_DEVICE)" || { echo "Set ANDROID_TV_DEVICE=HOST:PORT or configure Makefile.local."; exit 1; }
+
+install: require-tv build
 	$(ADB) connect "$(ANDROID_TV_DEVICE)"
 	$(ADB) -s "$(ANDROID_TV_DEVICE)" install -r "$(APK)"
 
 deploy: install
 
-run:
+run: require-tv
 	$(ADB) connect "$(ANDROID_TV_DEVICE)"
 	$(ADB) -s "$(ANDROID_TV_DEVICE)" shell am force-stop "$(PACKAGE)"
 	$(ADB) -s "$(ANDROID_TV_DEVICE)" shell am start -W -n "$(COMPONENT)"

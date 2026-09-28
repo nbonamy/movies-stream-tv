@@ -174,11 +174,9 @@ Next implementation gates are focused parser/protocol fixtures, a reliable
 season identity strategy, a deliberate supported-source/default policy, and live
 validation inside Movies for catalog/search, playback, subtitles and auto-binging.
 
-## Local evidence
+## Evidence handling
 
-Temporary research captures, protocol probe, native probe project, build output,
-screenshots and Media3 logs are under `/tmp/movies-123-inspect/`. Temporary
-stream tokens and provider script dumps are deliberately absent from this repo.
-The standalone probe APK built successfully and was installed only on
-`emulator-5554`, then removed after verification. This document is the only
-repository change from the investigation.
+Research captures, the standalone probe project, screenshots and Media3 logs
+were kept outside the repository. Temporary stream tokens and provider script
+dumps are absent from this repo. The standalone probe APK built successfully,
+was installed only on an Android TV emulator, and was removed after verification.

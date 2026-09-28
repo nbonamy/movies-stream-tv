@@ -8,3 +8,6 @@ local.properties
 *.jks
 signing.properties
 .DS_Store
+
+# Personal device overrides
+/Makefile.local
