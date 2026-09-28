@@ -9,9 +9,10 @@ import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.ProgressBar
 import androidx.recyclerview.widget.RecyclerView
 
-internal data class MediaCard(val id: Long, val title: String, val image: String)
+internal data class MediaCard(val id: Long, val title: String, val image: String, val progress: Int? = null)
 
 /** MediaStation cards with recycling for long movie catalogs and TV seasons. */
 internal class MediaCardAdapter(
@@ -76,6 +77,10 @@ internal class MediaCardAdapter(
         val item = items[position]
         holder.itemView.contentDescription = item.title
         holder.itemView.findViewById<TextView>(R.id.title).text = item.title
+        holder.itemView.findViewById<ProgressBar>(R.id.progress).apply {
+            visibility = if (item.progress == null) View.GONE else View.VISIBLE
+            progress = item.progress ?: 0
+        }
         holder.itemView.findViewById<ImageView>(R.id.thumbnail).apply {
             setImageDrawable(null)
             image(item.image, this)

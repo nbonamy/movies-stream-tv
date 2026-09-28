@@ -16,7 +16,7 @@ Colors, dimensions, font weights, and styles are imported from the corresponding
 
 ## Adaptations
 
-- The gallery layout uses `LinearLayout` in place of `NonOverlappingLinearLayout`; provider-inapplicable badges, episode tags, and resume progress are removed. Card sizing, artwork, title styling, focus foreground, and elevation come from MediaStation.
+- The gallery layout uses `LinearLayout` in place of `NonOverlappingLinearLayout`; provider-inapplicable badges and episode tags are removed. Card sizing, artwork, title styling, focus foreground, and elevation come from MediaStation. Continue watching cards restore MediaStation's resume progress bar; TV entries show the season and episode in their title.
 - The details layout omits the cast RecyclerView. Binding hides unavailable metadata and library-management actions. Available title, year, rating, artwork, synopsis, and Watch action retain their original layout.
 - `DialogUtils` changes package and theme lookup, and omits the unused legacy builder. Bottom positioning, selected/focused styling, dim amount, scrolling, and entrance/dismissal animations are preserved.
 - Android 26–27 uses `textStyle="bold"` for the action label; Android 28+ retains MediaStation's original font-weight style.

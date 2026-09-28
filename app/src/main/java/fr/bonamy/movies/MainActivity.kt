@@ -23,6 +23,8 @@ import android.widget.Button
 import android.widget.FrameLayout
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.ConcatAdapter
 import android.widget.ImageView
 import android.widget.ImageButton
 import android.widget.LinearLayout
@@ -31,6 +33,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -60,6 +63,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.net.URL
 import java.io.File
@@ -83,6 +87,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var gallery: LinearLayout
     private lateinit var movieGrid: RecyclerView
     private lateinit var movieCards: MediaCardAdapter
+    private lateinit var resumeSection: HomeSectionAdapter
+    private lateinit var resumeGrid: RecyclerView
+    private val catalogOffset get() = resumeSection.itemCount + 1
     private var catalogColumns = 7
     private lateinit var status: TextView
     private lateinit var heading: TextView
@@ -101,11 +108,17 @@ class MainActivity : ComponentActivity() {
     private lateinit var subtitlesButton: Button
     private lateinit var qualityButton: Button
     private var player: ExoPlayer? = null
+    private var progressJob: Job? = null
+    private var playbackReady = false
+    private val playbackProgress by lazy { PlaybackProgress(getSharedPreferences("progress", MODE_PRIVATE)) }
     private var catalogJob: Job? = null
     private var playbackJob: Job? = null
     private var optionsDialog: Dialog? = null
     private var currentMovie: Movie? = null
     private var currentTarget: PlaybackTarget? = null
+    private var currentEpisodeName: String? = null
+    private var currentArtwork = ""
+    private var returnToHome = false
     private var catalogType = MediaType.MOVIE
     private var catalogPage = 1
     private var totalPages = 1
@@ -190,7 +203,7 @@ class MainActivity : ComponentActivity() {
                     searchJob?.cancel()
                     search()
                 }
-                override fun onKeyboardDismiss(query: String) { movieGrid.getChildAt(0)?.requestFocus() }
+                override fun onKeyboardDismiss(query: String) { focusCatalogStart() }
             })
         }
         searchPanel.addView(searchBar, LinearLayout.LayoutParams(-1, -2))
@@ -221,13 +234,30 @@ class MainActivity : ComponentActivity() {
         val section = layoutInflater.inflate(R.layout.section_header, content, false)
         heading = section.findViewById(R.id.title)
         heading.text = "Popular Movies"
-        content.addView(section)
+        val catalogHeader = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        catalogHeader.addView(section)
         status = text("Loading Vidbox movies…", 14f, muted)
-        content.addView(status, LinearLayout.LayoutParams(-1, dp(28)))
+        catalogHeader.addView(status, LinearLayout.LayoutParams(-1, dp(28)))
+        val resumePanel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        resumePanel.addView(layoutInflater.inflate(R.layout.section_header, resumePanel, false).apply {
+            findViewById<TextView>(R.id.title).text = "Continue watching"
+        })
+        resumeGrid = RecyclerView(this).apply {
+            layoutManager = LinearLayoutManager(this@MainActivity, RecyclerView.HORIZONTAL, false)
+            clipToPadding = false
+            clipChildren = false
+            itemAnimator = null
+        }
+        resumePanel.addView(resumeGrid, LinearLayout.LayoutParams(-1, -2))
+        resumeSection = HomeSectionAdapter(resumePanel, false)
         val widthDp = resources.displayMetrics.widthPixels / resources.displayMetrics.density
         catalogColumns = if (widthDp >= 800) 7 else max(4, (widthDp / 120).toInt())
         movieGrid = RecyclerView(this).apply {
-            layoutManager = GridLayoutManager(this@MainActivity, catalogColumns)
+            layoutManager = GridLayoutManager(this@MainActivity, catalogColumns).apply {
+                spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+                    override fun getSpanSize(position: Int) = if (position < catalogOffset) catalogColumns else 1
+                }
+            }
             clipToPadding = false
             clipChildren = false
             itemAnimator = null
@@ -241,7 +271,7 @@ class MainActivity : ComponentActivity() {
         }, focus = { index ->
             if (index >= catalogItems.size - catalogColumns * 2) loadCatalogPage(catalogPage + 1, append = true)
         })
-        movieGrid.adapter = movieCards
+        movieGrid.adapter = ConcatAdapter(resumeSection, HomeSectionAdapter(catalogHeader), movieCards)
         content.addView(movieGrid, LinearLayout.LayoutParams(-1, 0, 1f))
 
     }
@@ -291,6 +321,7 @@ class MainActivity : ComponentActivity() {
 
     private fun showSearch() {
         searchPanel.visibility = View.VISIBLE
+        refreshContinueWatching()
         searchBar.requestFocus()
     }
 
@@ -322,6 +353,7 @@ class MainActivity : ComponentActivity() {
         heading.text = "Popular ${catalogType.label}"
         searchBar.title = catalogType.label
         root.findViewById<ImageButton>(R.id.search).contentDescription = "Search ${catalogType.label.lowercase()}"
+        refreshContinueWatching()
         loadCatalogPage(1)
     }
 
@@ -384,7 +416,43 @@ class MainActivity : ComponentActivity() {
         movieCards.append(movies.map { MediaCard(it.id.toLong(), it.title, it.poster) })
         if (!append && searchPanel.visibility != View.VISIBLE) {
             movieGrid.scrollToPosition(0)
-            movieGrid.post { movieGrid.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() }
+            movieGrid.post { focusCatalogStart() }
+        }
+    }
+
+    private fun focusCatalogStart() {
+        if (resumeSection.visible && resumeGrid.getChildAt(0)?.requestFocus() == true) return
+        movieGrid.findViewHolderForAdapterPosition(catalogOffset)?.itemView?.requestFocus()
+    }
+
+    private fun refreshContinueWatching(focusTarget: PlaybackTarget? = null) {
+        val items = playbackProgress.list(catalogType)
+        resumeSection.visible = searchPanel.visibility != View.VISIBLE && items.isNotEmpty()
+        val cards = MediaCardAdapter(landscape = catalogType == MediaType.TV, image = { url, view ->
+            images.load(url, view) { bitmap -> if (bitmap != null) view.setImageBitmap(bitmap) }
+        }, select = { index, _ ->
+            val item = items[index]
+            openPlayer(item.movie, item.target, item.episodeName, item.artwork)
+        }, focus = {
+            movieGrid.post { (movieGrid.layoutManager as GridLayoutManager).scrollToPositionWithOffset(0, 0) }
+        })
+        cards.append(items.mapIndexed { index, item ->
+            val title = if (item.target.type == MediaType.MOVIE) item.movie.title else
+                "${item.movie.title} · S${item.target.season} E${item.target.episode}" +
+                    item.episodeName?.let { " · $it" }.orEmpty()
+            MediaCard(index.toLong(), title, item.artwork,
+                (item.position.toDouble() / item.duration * 100).toInt())
+        })
+        resumeGrid.adapter = cards
+        if (focusTarget != null) {
+            val index = items.indexOfFirst { it.target == focusTarget }.coerceAtLeast(0)
+            movieGrid.scrollToPosition(0)
+            resumeGrid.scrollToPosition(index)
+            movieGrid.post {
+                if (resumeSection.visible) resumeGrid.post {
+                    resumeGrid.findViewHolderForAdapterPosition(index)?.itemView?.requestFocus()
+                } else focusCatalogStart()
+            }
         }
     }
 
@@ -507,7 +575,8 @@ class MainActivity : ComponentActivity() {
                 }, select = { index, card ->
                     val episode = episodes[index]
                     selectedEpisodeCard = card
-                    openPlayer(show, PlaybackTarget(show.id, MediaType.TV, season.number, episode.number), episode.name)
+                    openPlayer(show, PlaybackTarget(show.id, MediaType.TV, season.number, episode.number),
+                        episode.name, episode.still.ifBlank { show.backdrop.ifBlank { show.poster } })
                 })
                 grid.adapter = cards
                 cards.append(episodes.map { episode -> MediaCard(episode.number.toLong(), "${episode.number}. ${episode.name}",
@@ -521,11 +590,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun openPlayer(movie: Movie, target: PlaybackTarget, episodeName: String? = null) {
+    private fun openPlayer(movie: Movie, target: PlaybackTarget, episodeName: String? = null,
+        artwork: String = movie.poster) {
         playbackJob?.cancel()
         releasePlayer()
         currentMovie = movie
         currentTarget = target
+        currentEpisodeName = episodeName
+        currentArtwork = artwork
+        val resumePosition = playbackProgress.position(target)
+        returnToHome = gallery.visibility == View.VISIBLE
+        gallery.visibility = View.GONE
         returnToEpisodes = episodeOverlay.visibility == View.VISIBLE
         episodeOverlay.visibility = View.GONE
         detailOverlay.visibility = View.GONE
@@ -539,7 +614,7 @@ class MainActivity : ComponentActivity() {
         playbackJob = lifecycleScope.launch {
             try {
                 val stream = runInterruptible(Dispatchers.IO) { client.resolve(target, currentSource.id) }
-                startPlayback(stream)
+                startPlayback(stream, resumePosition)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -570,7 +645,18 @@ class MainActivity : ComponentActivity() {
             .build()
         exoPlayer.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) playerStatus.visibility = View.GONE
+                if (state == Player.STATE_READY) {
+                    playbackReady = true
+                    playerStatus.visibility = View.GONE
+                }
+                if (state == Player.STATE_ENDED) savePlaybackProgress()
+            }
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (!isPlaying) savePlaybackProgress()
+            }
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo, reason: Int) {
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) savePlaybackProgress()
             }
             override fun onTracksChanged(tracks: Tracks) {
                 val subtitle = pendingSubtitle ?: return
@@ -596,7 +682,13 @@ class MainActivity : ComponentActivity() {
             .setMimeType(MimeTypes.APPLICATION_M3U8).build())
         exoPlayer.prepare()
         if (startPosition > 0) exoPlayer.seekTo(startPosition)
-        exoPlayer.playWhenReady = autoPlay
+        exoPlayer.playWhenReady = autoPlay && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        progressJob = lifecycleScope.launch {
+            while (true) {
+                delay(5_000)
+                savePlaybackProgress()
+            }
+        }
         playerView.showController()
     }
 
@@ -818,12 +910,16 @@ class MainActivity : ComponentActivity() {
         optionsDialog?.dismiss()
         playbackJob?.cancel()
         releasePlayer()
+        val target = currentTarget
         currentMovie = null
         currentTarget = null
         currentSource = VidboxClient.DEFAULT_SOURCE
         availableSources = VidboxClient.BUILT_IN_SOURCES
         playerLayer.visibility = View.GONE
-        if (returnToEpisodes) {
+        if (returnToHome) {
+            gallery.visibility = View.VISIBLE
+            refreshContinueWatching(target)
+        } else if (returnToEpisodes) {
             episodeOverlay.visibility = View.VISIBLE
             selectedEpisodeCard?.requestFocus()
         } else {
@@ -838,6 +934,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun releasePlayer() {
+        savePlaybackProgress()
+        progressJob?.cancel()
+        playbackReady = false
         subtitleJob?.cancel()
         subtitleSearch = null
         subtitleContext = null
@@ -846,6 +945,16 @@ class MainActivity : ComponentActivity() {
         playerView.player = null
         player?.release()
         player = null
+    }
+
+    private fun savePlaybackProgress() {
+        val currentPlayer = player ?: return
+        val target = currentTarget ?: return
+        val movie = currentMovie ?: return
+        if (!playbackReady) return
+        playbackProgress.save(movie, target, currentEpisodeName, currentArtwork,
+            currentPlayer.currentPosition, currentPlayer.duration,
+            currentPlayer.playbackState == Player.STATE_ENDED)
     }
 
     @Deprecated("Android TV uses the physical Back button")
@@ -867,6 +976,7 @@ class MainActivity : ComponentActivity() {
             detailOverlay.visibility == View.VISIBLE -> {
                 detailOverlay.visibility = View.GONE
                 gallery.visibility = View.VISIBLE
+                refreshContinueWatching()
                 selectedMovieCard?.requestFocus()
             }
             searchPanel.visibility == View.VISIBLE -> loadLatest()
@@ -886,10 +996,29 @@ class MainActivity : ComponentActivity() {
     // Activity's public key-dispatch hook inherits an AndroidX internal annotation.
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && gallery.visibility == View.VISIBLE && movieGrid.hasFocus()) {
+            val position = movieGrid.focusedChild?.let { movieGrid.getChildAdapterPosition(it) - catalogOffset }
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                if (resumeGrid.hasFocus() || (position in 0 until catalogColumns && !resumeSection.visible)) {
+                    gallery.findViewById<View>(R.id.menu).requestFocus()
+                    return true
+                }
+                if (position in 0 until catalogColumns && resumeSection.visible) {
+                    (movieGrid.layoutManager as GridLayoutManager).scrollToPositionWithOffset(0, 0)
+                    movieGrid.post { resumeGrid.getChildAt(0)?.requestFocus() }
+                    return true
+                }
+            }
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && resumeGrid.hasFocus()) {
+                movieGrid.scrollToPosition(catalogOffset)
+                movieGrid.post { movieGrid.findViewHolderForAdapterPosition(catalogOffset)?.itemView?.requestFocus() }
+                return true
+            }
+        }
         if (event.action == KeyEvent.ACTION_DOWN && event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
             playerLayer.visibility != View.VISIBLE && detailOverlay.visibility != View.VISIBLE &&
             episodeOverlay.visibility != View.VISIBLE && movieGrid.hasFocus()) {
-            val focused = movieGrid.focusedChild?.let { movieGrid.getChildAdapterPosition(it) }
+            val focused = movieGrid.focusedChild?.let { movieGrid.getChildAdapterPosition(it) - catalogOffset }
             if (focused != null && focused >= catalogItems.size - catalogColumns * 2) {
                 loadCatalogPage(catalogPage + 1, append = true)
             }
@@ -939,6 +1068,12 @@ class MainActivity : ComponentActivity() {
             return true
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onStop() {
+        savePlaybackProgress()
+        player?.pause()
+        super.onStop()
     }
 
     override fun onDestroy() {

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- MediaStation's video-card progress indicator. -->
+    <dimen name="resume_progress_height">2dp</dimen>
+    <color name="resume_progress_color">@color/tv_accent</color>
+</resources>

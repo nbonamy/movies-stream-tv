@@ -25,6 +25,17 @@
 
 	</FrameLayout>
 
+	<ProgressBar
+		android:id="@+id/progress"
+		style="?android:attr/progressBarStyleHorizontal"
+		android:layout_width="match_parent"
+		android:layout_height="@dimen/resume_progress_height"
+		android:background="@drawable/item_card_bg_selector"
+		android:backgroundTintMode="src_over"
+		android:duplicateParentState="true"
+		android:progressTint="@color/resume_progress_color"
+		android:visibility="gone" />
+
 	<View
 		android:id="@+id/separator"
 		android:layout_width="match_parent"
