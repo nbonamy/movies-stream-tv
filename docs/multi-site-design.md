@@ -1,6 +1,6 @@
 # Multi-site architecture
 
-Vidbox and Kopoti are registered. Sites expose an ordered list of sections with
+Vidbox, Kopoti and 123Movies are registered. Sites expose an ordered list of sections with
 stable IDs, site-chosen display titles and media types. Multiple sections may use
 the same media type; section identity is independent of playback identity.
 
@@ -13,7 +13,8 @@ the same media type; section identity is independent of playback identity.
 | `CatalogBrowser` | Current site/query, opaque continuation, deduplication, stale-result rejection |
 | `sites/vidbox` | Vidbox requests, parsing, TMDB identity mapping and numbered pagination |
 | `sites/kopoti` | Category pagination, unified search, HTML details and ShareCloudy source discovery |
-| `extractors` | Max, Vidpro, VidRock and ShareCloudy request/configuration chains |
+| `sites/movies123` | Movie/season catalogs, unified search, season grouping and opaque page/episode identities |
+| `extractors` | Max, Vidpro, VidRock, ShareCloudy and Ployan request/configuration chains |
 | `HttpTransport` | Bounded responses, per-request timeouts, cancellation checks and validated redirects/destinations |
 | `SubtitleClient` | French/English lookup and download from normalized IMDb/episode metadata |
 | `:app` | Native views, Media3 playback, captured request sessions and site-scoped persistence |
@@ -58,8 +59,10 @@ subtitle method defaults to no online lookup; in-stream tracks remain available.
   selection is used only if still available. Explicit resolution failures do not
   silently switch to another source.
 - `ResolvedPlayback` supplies a fresh URI, media format, request headers and
-  optional normalized subtitle metadata. Supported native formats are HLS and MP4.
-  The headers apply to Media3's playlists, keys and segments.
+  optional normalized subtitle metadata and hosted WebVTT tracks. Supported native
+  formats are HLS and MP4. The headers apply to Media3's playlists, keys, segments
+  and hosted subtitles. Hosted track identities, languages and labels let the
+  shared menu and persisted subtitle selection work without site-specific UI logic.
 
 ## Search and infinite navigation
 
@@ -87,8 +90,9 @@ replacing a newer screen or playback session.
 
 | Active site | Top section | Below the divider |
 | --- | --- | --- |
-| Vidbox | Movies; TV Shows | Kopoti |
-| Kopoti | À l'affiche; Spectacles | Vidbox |
+| Vidbox | Movies; TV Shows | Kopoti; 123Movies |
+| Kopoti | À l'affiche; Spectacles | Vidbox; 123Movies |
+| 123Movies | Movies; TV Shows | Vidbox; Kopoti |
 
 The current site is omitted from the switch list and shown in the browser header.
 Only section rows receive selected highlighting. The divider cannot receive focus.

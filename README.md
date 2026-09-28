@@ -6,7 +6,7 @@
 
 **Movies, series, and spectacles. Made for your TV.**
 
-Browse Vidbox and Kopoti from a native Android TV app. Find something to watch, settle in, and pick up where you left off—all with your TV remote.
+Browse Vidbox, Kopoti and 123Movies from a native Android TV app. Find something to watch, settle in, and pick up where you left off—all with your TV remote.
 
 ## Your next watch, a few clicks away
 
@@ -16,12 +16,13 @@ Browse Vidbox and Kopoti from a native Android TV app. Find something to watch, 
 - **Keep the series going.** The next episode starts automatically, including across seasons.
 - **Watch your way.** Choose a source, adjust quality, and select subtitles without leaving the player. Search online for French and English subtitles; the next episode follows your previous subtitle language.
 
-## Two catalogs, one remote
+## Three catalogs, one remote
 
 | Site | What you can browse |
 | --- | --- |
 | **Vidbox** | Movies and TV shows, with seasons and episodes |
 | **Kopoti** | Films in **À l’affiche** and **Spectacles**, plus search across its catalog |
+| **123Movies** | Movies and TV shows, with seasons, episodes and hosted subtitles; Server 1 playback |
 
 Switch sites and sections from the menu. Each site remembers your selected source and keeps its own Continue watching history. Catalogs and playable sources depend on what each site currently provides.
 
@@ -65,6 +66,6 @@ Movies Stream uses native Android views and Media3 ExoPlayer for HLS/MP4 playbac
 
 Run `make check` for tests, lint, and a debug build.
 
-- [Multi-site architecture](docs/multi-site-design.md) · [Kopoti integration](docs/kopoti.md)
+- [Multi-site architecture](docs/multi-site-design.md) · [Kopoti integration](docs/kopoti.md) · [123Movies integration](docs/123movies.md)
 - [TV browsing](docs/tv-browsing.md) · [Resume playback](docs/resume-playback.md) · [Subtitles](docs/subtitles.md)
 - [MediaStation UI provenance](docs/mediastation-ui.md)

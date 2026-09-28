@@ -778,6 +778,11 @@ class MainActivity : ComponentActivity() {
         player = exoPlayer
         playerView.player = exoPlayer
         exoPlayer.setMediaItem(MediaItem.Builder().setUri(stream.streamUrl)
+            .setSubtitleConfigurations(stream.subtitles.map { track ->
+                MediaItem.SubtitleConfiguration.Builder(Uri.parse(track.url))
+                    .setId(track.id).setLanguage(track.language).setLabel(track.label)
+                    .setMimeType(MimeTypes.TEXT_VTT).build()
+            })
             .setMimeType(stream.format.mimeType).build())
         exoPlayer.prepare()
         if (startPosition > 0) exoPlayer.seekTo(startPosition)
@@ -1037,7 +1042,7 @@ class MainActivity : ComponentActivity() {
         val builder = DialogUtils.getDialogBuilder(this, "Subtitles")
         val status = message ?: when {
             failures.isNotEmpty() -> "${failures.joinToString { it.label }} search unavailable. Close and reopen to retry."
-            result != null && online.isEmpty() -> "No French or English subtitles found online."
+            result != null && online.isEmpty() && textTracks.isEmpty() -> "No French or English subtitles found online."
             else -> null
         }
         if (status != null) builder.setMessage(status)
@@ -1095,8 +1100,10 @@ class MainActivity : ComponentActivity() {
             .setLabel(subtitle.release)
             .setMimeType(if (file.extension == "vtt") MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP)
             .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
-        val item = currentPlayer.currentMediaItem?.buildUpon()
-            ?.setSubtitleConfigurations(listOf(config))?.build() ?: return
+        val currentItem = currentPlayer.currentMediaItem ?: return
+        val hosted = currentItem.localConfiguration?.subtitleConfigurations.orEmpty()
+            .filterNot { it.id?.startsWith("online:") == true }
+        val item = currentItem.buildUpon().setSubtitleConfigurations(hosted + config).build()
         selectedSubtitle = SubtitleSelection.Online(subtitle)
         savePlaybackProgress()
         onlineSubtitle = subtitle

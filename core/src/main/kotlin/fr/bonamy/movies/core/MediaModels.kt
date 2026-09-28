@@ -20,7 +20,11 @@ data class ResolvedPlayback(
     val requestHeaders: Map<String, String>,
     val subtitleContext: SubtitleContext? = null,
     val format: MediaFormat = MediaFormat.HLS,
+    val subtitles: List<PlaybackSubtitle> = emptyList(),
 )
+
+/** Provider-hosted WebVTT tracks; requests inherit the playback headers. IDs survive URL refreshes. */
+data class PlaybackSubtitle(val id: String, val url: String, val language: String, val label: String)
 
 enum class MediaFormat(val mimeType: String) { HLS("application/x-mpegURL"), MP4("video/mp4") }
 
