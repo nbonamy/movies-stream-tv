@@ -361,13 +361,20 @@ class MainActivity : ComponentActivity() {
         movieGrid.requestFocus()
     }
 
-    private fun showSectionMenu() {
+    private fun showSectionMenu(site: fr.bonamy.movies.core.StreamingSite = activeSite) {
         browserDialog?.dismiss()
-        browserDialog = SiteMenuDialog.create(this, sites.menu(activeSite), catalogSection) { item ->
+        browserDialog = SiteMenuDialog.create(this, sites.menu(site), sitePreferences.section(site.descriptor),
+            title = "Browse ${site.descriptor.name}") { item ->
             browserDialog?.dismiss()
             when (item) {
-                is BrowseMenuItem.Section -> sitePreferences.selectSection(activeSite.descriptor, item.section)
-                is BrowseMenuItem.Site -> sitePreferences.activeSiteId = item.descriptor.id
+                is BrowseMenuItem.Section -> {
+                    sitePreferences.activeSiteId = site.descriptor.id
+                    sitePreferences.selectSection(site.descriptor, item.section)
+                }
+                is BrowseMenuItem.Site -> {
+                    showSectionMenu(sites.get(item.descriptor.id))
+                    return@create
+                }
                 BrowseMenuItem.Divider -> return@create
             }
             searchJob?.cancel()

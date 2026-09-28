@@ -90,8 +90,11 @@ Only section rows receive selected highlighting. The divider cannot receive focu
 Rows reuse MediaStation's dialog resources and remote behavior. With one site,
 the divider and switch section are absent.
 
-Switching restores the new site's last supported section, otherwise its first section,
-then loads its catalog and Continue watching list.
+Selecting a site refreshes the menu with that site's sections and its name in the
+dialog title. Its remembered section receives initial focus, otherwise its first
+section does. The active site, saved selection and catalog change only when the
+user chooses a section. Back dismisses the menu without changing the catalog.
+Choosing a section loads its catalog and Continue watching list.
 
 ## Persistence and migration
 
