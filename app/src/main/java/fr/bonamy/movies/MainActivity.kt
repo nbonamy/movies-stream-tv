@@ -47,13 +47,17 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
-import fr.bonamy.movies.core.Movie
+import fr.bonamy.movies.core.Title
 import fr.bonamy.movies.core.MediaType
-import fr.bonamy.movies.core.PlaybackTarget
+import fr.bonamy.movies.core.PlayableRef
+import fr.bonamy.movies.core.StreamingSite
+import fr.bonamy.movies.core.CatalogRequest
+import fr.bonamy.movies.core.CatalogBrowser
+import fr.bonamy.movies.core.BrowseMenuItem
+import fr.bonamy.movies.core.RequestSession
 import fr.bonamy.movies.core.Season
-import fr.bonamy.movies.core.MovieSource
-import fr.bonamy.movies.core.ResolvedMovie
-import fr.bonamy.movies.core.VidboxClient
+import fr.bonamy.movies.core.PlaybackSource
+import fr.bonamy.movies.core.ResolvedPlayback
 import fr.bonamy.movies.core.SubtitleClient
 import fr.bonamy.movies.core.SubtitleContext
 import fr.bonamy.movies.core.SubtitleSearch
@@ -64,6 +68,8 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.net.URL
 import java.io.File
@@ -75,7 +81,13 @@ import kotlin.math.max
 class MainActivity : ComponentActivity() {
     private val accent = Color.rgb(52, 152, 218)
     private val muted = Color.rgb(168, 189, 216)
-    private val client = VidboxClient()
+    private val sites = AppServices.sites
+    private val sitePreferences by lazy { SitePreferences(getSharedPreferences("playback", MODE_PRIVATE)) }
+    private val activeSite get() = sites.initial(sitePreferences.activeSiteId)
+    private var playbackSite: StreamingSite? = null
+    private val playbackSession = RequestSession()
+    private var detailJob: Job? = null
+    private val detailSession = RequestSession()
     private val subtitleClient = SubtitleClient()
     private var subtitleJob: Job? = null
     private var subtitleContext: SubtitleContext? = null
@@ -114,27 +126,24 @@ class MainActivity : ComponentActivity() {
     private var catalogJob: Job? = null
     private var playbackJob: Job? = null
     private var optionsDialog: Dialog? = null
-    private var currentMovie: Movie? = null
-    private var currentTarget: PlaybackTarget? = null
+    private var currentMovie: Title? = null
+    private var currentTarget: PlayableRef? = null
     private var currentEpisodeName: String? = null
     private var currentArtwork = ""
     private var returnToHome = false
     private var catalogType = MediaType.MOVIE
-    private var catalogPage = 1
-    private var totalPages = 1
+    private val catalogBrowser by lazy { CatalogBrowser(activeSite, CatalogRequest(catalogType)) }
     private var catalogQuery: String? = null
-    private var catalogLoading = false
     private var catalogGeneration = 0
-    private val catalogItems = mutableListOf<Movie>()
+    private val catalogItems get() = catalogBrowser.items
     private lateinit var episodeOverlay: FrameLayout
     private var episodeJob: Job? = null
     private var selectedEpisodeCard: View? = null
     private var returnToEpisodes = false
     private var browserDialog: Dialog? = null
     private var selectedMovieCard: View? = null
-    private var currentSource: MovieSource = VidboxClient.DEFAULT_SOURCE
-    private var availableSources: List<MovieSource> = VidboxClient.BUILT_IN_SOURCES
-    private val playbackPreferences by lazy { getSharedPreferences("playback", MODE_PRIVATE) }
+    private var currentSourceId: String? = null
+    private var availableSources: List<PlaybackSource> = emptyList()
     private val voiceSearch = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { query ->
             searchBar.setSearchQuery(query)
@@ -152,6 +161,7 @@ class MainActivity : ComponentActivity() {
             it.background = getDrawable(R.drawable.browser_surface_background)
             setContentView(it)
         }
+        catalogType = sitePreferences.mode(activeSite.descriptor)
         buildGallery()
         buildDetail()
         episodeOverlay = FrameLayout(this).apply {
@@ -192,7 +202,7 @@ class MainActivity : ComponentActivity() {
                     searchJob?.cancel()
                     catalogJob?.cancel()
                     ++catalogGeneration
-                    catalogLoading = false
+                    catalogBrowser.invalidate()
                     searchJob = lifecycleScope.launch {
                         kotlinx.coroutines.delay(600)
                         search(submitted = false)
@@ -236,7 +246,7 @@ class MainActivity : ComponentActivity() {
         heading.text = "Popular Movies"
         val catalogHeader = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         catalogHeader.addView(section)
-        status = text("Loading Vidbox movies…", 14f, muted)
+        status = text("Loading titles…", 14f, muted)
         catalogHeader.addView(status, LinearLayout.LayoutParams(-1, dp(28)))
         val resumePanel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         resumePanel.addView(layoutInflater.inflate(R.layout.section_header, resumePanel, false).apply {
@@ -269,7 +279,7 @@ class MainActivity : ComponentActivity() {
             selectedMovieCard = card
             showDetail(catalogItems[index])
         }, focus = { index ->
-            if (index >= catalogItems.size - catalogColumns * 2) loadCatalogPage(catalogPage + 1, append = true)
+            if (index >= catalogItems.size - catalogColumns * 2) loadCatalogPage(append = true)
         })
         movieGrid.adapter = ConcatAdapter(resumeSection, HomeSectionAdapter(catalogHeader), movieCards)
         content.addView(movieGrid, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -327,42 +337,48 @@ class MainActivity : ComponentActivity() {
 
     private fun showModeMenu() {
         browserDialog?.dismiss()
-        browserDialog = DialogUtils.getDialogBuilder(this, "Browse")
-            .setSingleChoiceItems(MediaType.entries.map { it.label }.toTypedArray(), catalogType.ordinal) { dialog, index ->
-                dialog.dismiss()
-                val type = MediaType.entries[index]
-                if (type != catalogType) {
-                    episodeJob?.cancel()
-                    episodeOverlay.visibility = View.GONE
-                    detailOverlay.visibility = View.GONE
-                    gallery.visibility = View.VISIBLE
-                    catalogType = type
-                    searchQuery = ""
-                    searchBar.setSearchQuery("")
-                    searchBar.title = type.label
-                    loadLatest()
-                }
-            }.create().also { it.show() }
+        browserDialog = SiteMenuDialog.create(this, sites.menu(activeSite), catalogType) { item ->
+            browserDialog?.dismiss()
+            when (item) {
+                is BrowseMenuItem.Mode -> sitePreferences.selectMode(activeSite.descriptor, item.type)
+                is BrowseMenuItem.Site -> sitePreferences.activeSiteId = item.descriptor.id
+                BrowseMenuItem.Divider -> return@create
+            }
+            searchJob?.cancel()
+            catalogJob?.cancel()
+            episodeJob?.cancel()
+            detailJob?.cancel()
+            detailSession.invalidate()
+            ++catalogGeneration
+            episodeOverlay.visibility = View.GONE
+            detailOverlay.visibility = View.GONE
+            gallery.visibility = View.VISIBLE
+            catalogType = sitePreferences.mode(activeSite.descriptor)
+            searchQuery = ""
+            searchBar.setSearchQuery("")
+            searchBar.title = catalogType.label
+            loadLatest()
+        }.also { it.show() }
     }
 
     private fun loadLatest() {
         searchJob?.cancel()
         searchPanel.visibility = View.GONE
         catalogQuery = null
-        breadcrumb.text = "${catalogType.label} / Popular"
+        breadcrumb.text = "${activeSite.descriptor.name} / ${catalogType.label}"
         heading.text = "Popular ${catalogType.label}"
         searchBar.title = catalogType.label
         root.findViewById<ImageButton>(R.id.search).contentDescription = "Search ${catalogType.label.lowercase()}"
         refreshContinueWatching()
-        loadCatalogPage(1)
+        loadCatalogPage()
     }
 
     private fun search(submitted: Boolean = true) {
         val query = searchQuery.trim().takeIf { it.isNotEmpty() }
         catalogQuery = query
-        breadcrumb.text = "${catalogType.label} / ${if (query == null) "Popular" else "Search"}"
+        breadcrumb.text = "${activeSite.descriptor.name} / ${catalogType.label}" + if (query == null) "" else " / Search"
         heading.text = if (query == null) "Popular ${catalogType.label}" else "Results for “$query”"
-        loadCatalogPage(1)
+        loadCatalogPage()
         // Editing updates results without submitting or changing keyboard focus.
         if (submitted) {
             (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
@@ -370,29 +386,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun loadCatalogPage(page: Int, append: Boolean = false) {
-        if (page !in 1..500 || (append && (catalogLoading || page > totalPages))) return
+    private fun loadCatalogPage(append: Boolean = false) {
+        if (append && !catalogBrowser.canLoadMore) return
         catalogJob?.cancel()
         val generation = ++catalogGeneration
+        val site = activeSite
         val type = catalogType
         val query = catalogQuery
-        catalogLoading = true
         status.text = if (append) "Loading more…" else "Loading ${type.label.lowercase()}…"
         if (!append) status.visibility = View.VISIBLE
         if (!append) {
-            catalogPage = 0
-            totalPages = 1
-            catalogItems.clear()
+            catalogBrowser.reset(site, CatalogRequest(type, query))
             movieCards.clear()
         }
         catalogJob = lifecycleScope.launch {
             try {
-                val result = runInterruptible(Dispatchers.IO) { client.browse(type, page, query) }
-                catalogPage = result.page
-                totalPages = result.totalPages
-                val existing = catalogItems.map { it.id }.toSet()
-                val added = result.items.filter { it.id !in existing }
-                catalogItems.addAll(added)
+                val added = catalogBrowser.loadNext() ?: return@launch
+                if (generation != catalogGeneration || site !== activeSite) return@launch
                 status.isFocusable = false
                 status.setOnClickListener(null)
                 status.text = "No ${type.label.lowercase()} found."
@@ -401,19 +411,18 @@ class MainActivity : ComponentActivity() {
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                if (generation != catalogGeneration || site !== activeSite) return@launch
                 status.text = if (append) "Could not load more. Press Down to retry."
-                    else "Could not load Vidbox. Select here to retry."
+                    else "Could not load ${site.descriptor.name}. Select here to retry."
                 status.visibility = View.VISIBLE
                 status.isFocusable = !append
-                status.setOnClickListener { loadCatalogPage(page, append) }
-            } finally {
-                if (generation == catalogGeneration) catalogLoading = false
+                status.setOnClickListener { loadCatalogPage(append) }
             }
         }
     }
 
-    private fun renderMovies(movies: List<Movie>, append: Boolean = false) {
-        movieCards.append(movies.map { MediaCard(it.id.toLong(), it.title, it.poster) })
+    private fun renderMovies(movies: List<Title>, append: Boolean = false) {
+        movieCards.append(movies.map { MediaCard(it.ref, it.title, it.poster) })
         if (!append && searchPanel.visibility != View.VISIBLE) {
             movieGrid.scrollToPosition(0)
             movieGrid.post { focusCatalogStart() }
@@ -425,8 +434,8 @@ class MainActivity : ComponentActivity() {
         movieGrid.findViewHolderForAdapterPosition(catalogOffset)?.itemView?.requestFocus()
     }
 
-    private fun refreshContinueWatching(focusTarget: PlaybackTarget? = null) {
-        val items = playbackProgress.list(catalogType)
+    private fun refreshContinueWatching(focusTarget: PlayableRef? = null) {
+        val items = playbackProgress.list(activeSite.descriptor.id, catalogType)
         resumeSection.visible = searchPanel.visibility != View.VISIBLE && items.isNotEmpty()
         val cards = MediaCardAdapter(landscape = catalogType == MediaType.TV, image = { url, view ->
             images.load(url, view) { bitmap -> if (bitmap != null) view.setImageBitmap(bitmap) }
@@ -436,11 +445,9 @@ class MainActivity : ComponentActivity() {
         }, focus = {
             movieGrid.post { (movieGrid.layoutManager as GridLayoutManager).scrollToPositionWithOffset(0, 0) }
         })
-        cards.append(items.mapIndexed { index, item ->
-            val title = if (item.target.type == MediaType.MOVIE) item.movie.title else
-                "${item.movie.title} · S${item.target.season} E${item.target.episode}" +
-                    item.episodeName?.let { " · $it" }.orEmpty()
-            MediaCard(index.toLong(), title, item.artwork,
+        cards.append(items.map { item ->
+            val title = playbackLabel(item.movie, item.target, item.episodeName)
+            MediaCard(item.target, title, item.artwork,
                 (item.position.toDouble() / item.duration * 100).toInt())
         })
         resumeGrid.adapter = cards
@@ -456,7 +463,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun showDetail(movie: Movie) {
+    private fun showDetail(movie: Title) {
+        detailJob?.cancel()
+        val ticket = detailSession.next()
+        val site = sites.get(movie.siteId)
+        detailJob = lifecycleScope.launch {
+            try {
+                val detail = site.details(movie)
+                require(detail.ref == movie.ref) { "Site returned a different title" }
+                if (detailSession.isCurrent(ticket) && site === activeSite) renderDetail(detail)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (detailSession.isCurrent(ticket)) {
+                    status.text = "Could not load title details. Select the title to retry."
+                    status.visibility = View.VISIBLE
+                }
+            }
+        }
+    }
+
+    private fun renderDetail(movie: Title) {
         gallery.visibility = View.GONE
         detailOverlay.removeAllViews()
         val backdrop = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
@@ -491,20 +518,20 @@ class MainActivity : ComponentActivity() {
         details.findViewById<TextView>(R.id.action_watch_label).text =
             if (movie.type == MediaType.TV) "EPISODES" else "WATCH"
         watch.setOnClickListener {
-            if (movie.type == MediaType.TV) showSeasons(movie) else openPlayer(movie, PlaybackTarget(movie.id))
+            if (movie.type == MediaType.TV) showSeasons(movie) else openPlayer(movie, PlayableRef(movie.ref))
         }
         detailOverlay.visibility = View.VISIBLE
         watch.requestFocus()
     }
 
-    private fun showSeasons(show: Movie, known: List<Season>? = null, selected: Int = -1) {
+    private fun showSeasons(show: Title, known: List<Season>? = null, selected: String? = null) {
         fun present(seasons: List<Season>) {
             browserDialog?.dismiss()
             val builder = DialogUtils.getDialogBuilder(this, show.title)
             if (seasons.isEmpty()) builder.setMessage("No seasons available.")
             else builder.setSingleChoiceItems(seasons.map { "${it.name} · ${it.episodeCount} episodes" }.toTypedArray(),
-                seasons.indexOfFirst { it.number == selected }.takeIf { it >= 0 }
-                    ?: seasons.indexOfFirst { it.number > 0 }.coerceAtLeast(0)) { dialog, index ->
+                seasons.indexOfFirst { it.ref.id == selected }.takeIf { it >= 0 }
+                    ?: seasons.indexOfFirst { (it.number ?: 1) > 0 }.coerceAtLeast(0)) { dialog, index ->
                 dialog.dismiss()
                 showEpisodes(show, seasons, seasons[index])
             }
@@ -517,7 +544,8 @@ class MainActivity : ComponentActivity() {
         loading.show()
         episodeJob = lifecycleScope.launch {
             try {
-                val seasons = runInterruptible(Dispatchers.IO) { client.seasons(show.id) }
+                val seasons = requireNotNull(sites.get(show.siteId).series).seasons(show.ref)
+                currentCoroutineContext().ensureActive()
                 if (browserDialog === loading && loading.isShowing) present(seasons)
             } catch (error: CancellationException) {
                 throw error
@@ -533,7 +561,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun showEpisodes(show: Movie, seasons: List<Season>, season: Season) {
+    private fun showEpisodes(show: Title, seasons: List<Season>, season: Season) {
         episodeJob?.cancel()
         episodeOverlay.removeAllViews()
         episodeOverlay.visibility = View.VISIBLE
@@ -549,7 +577,7 @@ class MainActivity : ComponentActivity() {
         panel.addView(header)
         val seasonRow = LinearLayout(this).apply { setPadding(dp(36), dp(8), dp(36), dp(8)) }
         val seasonButton = playerActionButton(season.name.uppercase(), seasonRow) {
-            showSeasons(show, seasons, season.number)
+            showSeasons(show, seasons, season.ref.id)
         }
         seasonRow.addView(seasonButton)
         panel.addView(seasonRow)
@@ -567,7 +595,8 @@ class MainActivity : ComponentActivity() {
         seasonButton.requestFocus()
         episodeJob = lifecycleScope.launch {
             try {
-                val episodes = runInterruptible(Dispatchers.IO) { client.episodes(show.id, season.number) }
+                val episodes = requireNotNull(sites.get(show.siteId).series).episodes(season.ref)
+                currentCoroutineContext().ensureActive()
                 message.text = if (episodes.isEmpty()) "No episodes available." else ""
                 message.visibility = if (episodes.isEmpty()) View.VISIBLE else View.GONE
                 val cards = MediaCardAdapter(landscape = true, image = { url, view ->
@@ -575,11 +604,11 @@ class MainActivity : ComponentActivity() {
                 }, select = { index, card ->
                     val episode = episodes[index]
                     selectedEpisodeCard = card
-                    openPlayer(show, PlaybackTarget(show.id, MediaType.TV, season.number, episode.number),
+                    openPlayer(show, episode.target,
                         episode.name, episode.still.ifBlank { show.backdrop.ifBlank { show.poster } })
                 })
                 grid.adapter = cards
-                cards.append(episodes.map { episode -> MediaCard(episode.number.toLong(), "${episode.number}. ${episode.name}",
+                cards.append(episodes.map { episode -> MediaCard(episode.target, episode.number?.let { "$it. ${episode.name}" } ?: episode.name,
                     episode.still.ifBlank { show.backdrop.ifBlank { show.poster } }) })
                 grid.post { grid.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() }
             } catch (error: CancellationException) {
@@ -590,7 +619,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun openPlayer(movie: Movie, target: PlaybackTarget, episodeName: String? = null,
+    private fun openPlayer(movie: Title, target: PlayableRef, episodeName: String? = null,
         artwork: String = movie.poster) {
         playbackJob?.cancel()
         releasePlayer()
@@ -604,37 +633,40 @@ class MainActivity : ComponentActivity() {
         returnToEpisodes = episodeOverlay.visibility == View.VISIBLE
         episodeOverlay.visibility = View.GONE
         detailOverlay.visibility = View.GONE
-        currentSource = preferredSource()
-        availableSources = VidboxClient.BUILT_IN_SOURCES
+        val site = sites.get(target.siteId)
+        playbackSite = site
+        val ticket = playbackSession.next()
+        currentSourceId = null
+        availableSources = emptyList()
+        sourceButton.isEnabled = false
         playerLayer.visibility = View.VISIBLE
-        playerTitle.text = if (episodeName == null) movie.title else "${movie.title} · S${target.season} E${target.episode} · $episodeName"
+        playerTitle.text = playbackLabel(movie, target, episodeName)
         playerStatus.text = "Preparing ${movie.title}…"
         playerStatus.visibility = View.VISIBLE
         playerView.requestFocus()
         playbackJob = lifecycleScope.launch {
             try {
-                val stream = runInterruptible(Dispatchers.IO) { client.resolve(target, currentSource.id) }
-                startPlayback(stream, resumePosition)
+                val options = site.sources(target)
+                if (!playbackSession.isCurrent(ticket)) return@launch
+                availableSources = options.sources
+                currentSourceId = options.preferred(sitePreferences.source(site.descriptor.id)).id
+                sourceButton.isEnabled = true
+                val stream = site.resolve(target, currentSourceId)
+                if (playbackSession.isCurrent(ticket)) startPlayback(stream, resumePosition)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                if (!playbackSession.isCurrent(ticket)) return@launch
                 playerStatus.text = "Could not play this title\n${error.message ?: "Unknown playback error"}"
                 playerStatus.visibility = View.VISIBLE
             }
         }
-        lifecycleScope.launch {
-            runCatching { withContext(Dispatchers.IO) { client.sources(target) } }
-                .onSuccess { sources ->
-                    if (currentTarget == target) availableSources = sources
-                }
-        }
     }
 
-    private fun startPlayback(stream: ResolvedMovie, startPosition: Long = 0, autoPlay: Boolean = true) {
+    private fun startPlayback(stream: ResolvedPlayback, startPosition: Long = 0, autoPlay: Boolean = true) {
         releasePlayer()
         subtitleContext = stream.subtitleContext
         val dataSource = DefaultHttpDataSource.Factory()
-            .setUserAgent(VidboxClient.USER_AGENT)
             .setDefaultRequestProperties(stream.requestHeaders)
             .setAllowCrossProtocolRedirects(true)
         val exoPlayer = ExoPlayer.Builder(this)
@@ -678,8 +710,8 @@ class MainActivity : ComponentActivity() {
         })
         player = exoPlayer
         playerView.player = exoPlayer
-        exoPlayer.setMediaItem(MediaItem.Builder().setUri(stream.playlistUrl)
-            .setMimeType(MimeTypes.APPLICATION_M3U8).build())
+        exoPlayer.setMediaItem(MediaItem.Builder().setUri(stream.streamUrl)
+            .setMimeType(stream.format.mimeType).build())
         exoPlayer.prepare()
         if (startPosition > 0) exoPlayer.seekTo(startPosition)
         exoPlayer.playWhenReady = autoPlay && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
@@ -697,38 +729,38 @@ class MainActivity : ComponentActivity() {
         showSourceDialog(availableSources)
     }
 
-    private fun showSourceDialog(sources: List<MovieSource>) {
+    private fun showSourceDialog(sources: List<PlaybackSource>) {
         optionsDialog?.dismiss()
         val dialog = DialogUtils.getDialogBuilder(this, "Sources")
             .setSingleChoiceItems(sources.map { it.label }.toTypedArray(),
-                sources.indexOfFirst { it.id == currentSource.id }) { selectedDialog, index ->
+                sources.indexOfFirst { it.id == currentSourceId }) { selectedDialog, index ->
                 selectedDialog.dismiss()
-                if (sources[index].id != currentSource.id) switchSource(sources[index])
+                if (sources[index].id != currentSourceId) switchSource(sources[index])
             }.create()
         showOptionsDialog(dialog)
     }
 
-    private fun switchSource(source: MovieSource) {
+    private fun switchSource(source: PlaybackSource) {
         val target = currentTarget ?: return
-        val position = player?.currentPosition ?: 0
-        val wasPlaying = player?.isPlaying != false
+        val site = playbackSite ?: return
+        val position = player?.currentPosition ?: playbackProgress.position(target)
+        val wasPlaying = player?.playWhenReady != false
         playbackJob?.cancel()
+        val ticket = playbackSession.next()
         playerStatus.text = "Switching to ${source.label}…"
         playerStatus.visibility = View.VISIBLE
         playbackJob = lifecycleScope.launch {
-            runCatching { withContext(Dispatchers.IO) { client.resolve(target, source.id) } }
-                .onSuccess { stream ->
-                    currentSource = source
-                    VidboxClient.BUILT_IN_SOURCES.firstOrNull { it.id == source.id }?.let { provider ->
-                        playbackPreferences.edit()
-                            .putString("currentProviderId", provider.id)
-                            .apply()
-                    }
-                    startPlayback(stream, position, wasPlaying)
-                }
-                .onFailure { error ->
-                    playerStatus.text = "Could not use ${source.label}\n${error.message ?: "Unknown playback error"}"
-                }
+            try {
+                val stream = site.resolve(target, source.id)
+                if (!playbackSession.isCurrent(ticket)) return@launch
+                currentSourceId = source.id
+                sitePreferences.selectSource(site.descriptor.id, source.id)
+                startPlayback(stream, position, wasPlaying)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (playbackSession.isCurrent(ticket)) playerStatus.text = "Could not use ${source.label}\n${error.message ?: "Unknown playback error"}"
+            }
         }
     }
 
@@ -742,7 +774,9 @@ class MainActivity : ComponentActivity() {
         if (result != null) return
         subtitleJob = lifecycleScope.launch {
             try {
-                val found = runInterruptible(Dispatchers.IO) { subtitleClient.search(target, subtitleContext) }
+                val context = subtitleContext ?: playbackSite?.subtitleContext(target)
+                val found = if (context == null) SubtitleSearch(emptyList(), emptyList()) else
+                    runInterruptible(Dispatchers.IO) { subtitleClient.search(context) }
                 if (player !== currentPlayer) return@launch
                 subtitleSearch = found
                 if (optionsDialog === dialog && dialog.isShowing) subtitleDialog(currentPlayer, found)
@@ -873,7 +907,7 @@ class MainActivity : ComponentActivity() {
             } + 1
         val labels = listOf("Auto") + qualities.map { (group, index) ->
             val format = group.getTrackFormat(index)
-            // Movie encodes often crop letterboxing (e.g. 1920×1000 is the 1080p rendition).
+            // Title encodes often crop letterboxing (e.g. 1920×1000 is the 1080p rendition).
             val resolution = max(format.height, format.width * 9 / 16)
             if (resolution > 0) "${resolution}p" else "${format.bitrate / 1000} kbps"
         }
@@ -913,8 +947,10 @@ class MainActivity : ComponentActivity() {
         val target = currentTarget
         currentMovie = null
         currentTarget = null
-        currentSource = VidboxClient.DEFAULT_SOURCE
-        availableSources = VidboxClient.BUILT_IN_SOURCES
+        currentSourceId = null
+        availableSources = emptyList()
+        playbackSite = null
+        playbackSession.invalidate()
         playerLayer.visibility = View.GONE
         if (returnToHome) {
             gallery.visibility = View.VISIBLE
@@ -926,11 +962,6 @@ class MainActivity : ComponentActivity() {
             detailOverlay.visibility = View.VISIBLE
             detailOverlay.findViewById<View>(R.id.action_watch)?.requestFocus()
         }
-    }
-
-    private fun preferredSource(): MovieSource {
-        val id = playbackPreferences.getString("currentProviderId", null) ?: return VidboxClient.DEFAULT_SOURCE
-        return VidboxClient.BUILT_IN_SOURCES.firstOrNull { it.id == id } ?: VidboxClient.DEFAULT_SOURCE
     }
 
     private fun releasePlayer() {
@@ -959,6 +990,8 @@ class MainActivity : ComponentActivity() {
 
     @Deprecated("Android TV uses the physical Back button")
     override fun onBackPressed() {
+        detailJob?.cancel()
+        detailSession.invalidate()
         when {
             optionsDialog?.isShowing == true -> optionsDialog?.dismiss()
             playerLayer.visibility == View.VISIBLE && playerTopBar.visibility == View.VISIBLE -> {
@@ -1020,7 +1053,7 @@ class MainActivity : ComponentActivity() {
             episodeOverlay.visibility != View.VISIBLE && movieGrid.hasFocus()) {
             val focused = movieGrid.focusedChild?.let { movieGrid.getChildAdapterPosition(it) - catalogOffset }
             if (focused != null && focused >= catalogItems.size - catalogColumns * 2) {
-                loadCatalogPage(catalogPage + 1, append = true)
+                loadCatalogPage(append = true)
             }
         }
         if (playerLayer.visibility == View.VISIBLE && optionsDialog?.isShowing != true &&
@@ -1077,6 +1110,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        detailJob?.cancel()
+        playbackSession.invalidate()
         catalogJob?.cancel()
         episodeJob?.cancel()
         browserDialog?.dismiss()
@@ -1093,6 +1128,11 @@ class MainActivity : ComponentActivity() {
             isFocusable = true
             setOnClickListener { click() }
         }
+
+    private fun playbackLabel(title: Title, target: PlayableRef, episodeName: String?): String =
+        listOfNotNull(title.title,
+            listOfNotNull(target.season?.let { "S$it" }, target.episode?.let { "E$it" })
+                .joinToString(" ").takeIf { it.isNotBlank() }, episodeName).joinToString(" · ")
 
     private fun text(value: String, size: Float, color: Int): TextView = TextView(this).apply {
         text = value

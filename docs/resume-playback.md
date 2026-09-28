@@ -11,9 +11,11 @@ title through its regular details or episode list also resumes automatically,
 matching MediaStation's player behavior.
 
 `PlaybackProgress` stores metadata and playback position in local SharedPreferences,
-keyed by media type, TMDB ID, and—for TV—season and episode. Source URLs and tokens
+keyed by stable site ID, media type, opaque title ID and—for TV—opaque episode ID.
+Keys are versioned JSON arrays, so IDs containing slashes cannot collide. Existing
+Vidbox bookmarks migrate automatically without losing their saved positions. Source URLs and tokens
 are never saved; each playback resolves a fresh stream. Movie and TV home lists
-are separate and sorted by the most recently saved playback. Progress is local
+are separate for each site and sorted by the most recently saved playback. Progress is local
 to the device; uninstalling or clearing app data removes it.
 
 Save every five seconds and on pause, seek, player release, and activity stop.
@@ -25,7 +27,8 @@ such a title starts at the beginning.
 ## Verification
 
 Android instrumentation tests exercise real SharedPreferences serialization,
-independent movie/season/episode keys, home-list filtering, incomplete stream
+independent site/movie/episode keys, legacy migration, opaque IDs, site preferences,
+home-list filtering, incomplete stream
 metadata, completion thresholds, and malformed records. Build the app and test
 APK with `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest`, install both
 on the emulator, and run:

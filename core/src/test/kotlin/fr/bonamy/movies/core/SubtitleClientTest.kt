@@ -13,19 +13,17 @@ class SubtitleClientTest {
     @Test
     fun searchesOnlyFrenchAndEnglishAndDoesNotDownloadUntilSelected() {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setBody("""{"data":{"imdb_id":"tt123456"}}"""))
             server.enqueue(MockResponse().setBody("""[
                 ${entry(server, "1", "fre", "40")},
                 ${entry(server, "2", "spa", "100")},
                 ${entry(server, "3", "fre", "500")}
             ]"""))
             server.enqueue(MockResponse().setBody("[${entry(server, "4", "eng", "100")}]"))
-            val client = SubtitleClient(searchOrigin = server.url("/"), metadataOrigin = server.url("/"))
-            val result = client.search(PlaybackTarget("789"), null)
+            val client = SubtitleClient(searchOrigin = server.url("/"))
+            val result = client.search(SubtitleContext("tt123456"))
             assertEquals(listOf("3", "1", "4"), result.subtitles.map { it.id })
             assertTrue(result.failedLanguages.isEmpty())
-            assertEquals(3, server.requestCount)
-            assertEquals("/api.php?type=movie&tmdb=789", server.takeRequest().path)
+            assertEquals(2, server.requestCount)
             listOf("fre", "eng").forEach { language ->
                 val request = server.takeRequest()
                 assertEquals("/search/imdbid-123456/sublanguageid-$language", request.path)
@@ -48,7 +46,7 @@ class SubtitleClientTest {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(503))
             server.enqueue(MockResponse().setBody("[${entry(server, "4", "eng", "100")}]"))
-            val result = SubtitleClient(searchOrigin = server.url("/")).search(PlaybackTarget("789"), SubtitleContext("tt123456"))
+            val result = SubtitleClient(searchOrigin = server.url("/")).search(SubtitleContext("tt123456"))
             assertEquals(listOf(SubtitleLanguage.FRENCH), result.failedLanguages)
             assertEquals(listOf("4"), result.subtitles.map { it.id })
             assertEquals(2, server.requestCount)
@@ -60,7 +58,7 @@ class SubtitleClientTest {
         MockWebServer().use { server ->
             repeat(2) { server.enqueue(MockResponse().setBody("[]")) }
             SubtitleClient(searchOrigin = server.url("/")).search(
-                PlaybackTarget("55", MediaType.TV, 2, 3), SubtitleContext("tt123456"))
+                SubtitleContext("tt123456", 2, 3))
             listOf("fre", "eng").forEach { language ->
                 assertEquals("/search/episode-3/imdbid-123456/season-2/sublanguageid-$language", server.takeRequest().path)
             }
@@ -71,7 +69,7 @@ class SubtitleClientTest {
     fun rejectsNonSubtitleDownloadsGzipBombsAndUntrustedRedirects() {
         MockWebServer().use { server ->
             val client = SubtitleClient(searchOrigin = server.url("/"))
-            val subtitle = OnlineSubtitle("1", SubtitleLanguage.FRENCH, "Movie.srt",
+            val subtitle = OnlineSubtitle("1", SubtitleLanguage.FRENCH, "Title.srt",
                 server.url("/download/1").toString(), "UTF-8", 0)
             server.enqueue(MockResponse().setBody("<html>Unavailable</html>"))
             assertThrows(IOException::class.java) { client.download(subtitle) }
@@ -87,7 +85,7 @@ class SubtitleClientTest {
     }
 
     private fun entry(server: MockWebServer, id: String, language: String, downloads: String) = """
-        {"IDSubtitleFile":"$id","SubLanguageID":"$language","SubFileName":"Movie.$language.srt",
+        {"IDSubtitleFile":"$id","SubLanguageID":"$language","SubFileName":"Title.$language.srt",
          "SubDownloadLink":"${server.url("/download/$id")}","SubFormat":"srt","SubEncoding":"UTF-8",
          "SubDownloadsCnt":"$downloads"}
     """.trimIndent()

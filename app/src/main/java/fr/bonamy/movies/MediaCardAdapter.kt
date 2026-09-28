@@ -12,7 +12,7 @@ import android.widget.TextView
 import android.widget.ProgressBar
 import androidx.recyclerview.widget.RecyclerView
 
-internal data class MediaCard(val id: Long, val title: String, val image: String, val progress: Int? = null)
+internal data class MediaCard(val id: Any, val title: String, val image: String, val progress: Int? = null)
 
 /** MediaStation cards with recycling for long movie catalogs and TV seasons. */
 internal class MediaCardAdapter(
@@ -22,10 +22,11 @@ internal class MediaCardAdapter(
     private val focus: (Int) -> Unit = {},
 ) : RecyclerView.Adapter<MediaCardAdapter.Holder>() {
     private val items = mutableListOf<MediaCard>()
+    private val stableIds = mutableMapOf<Any, Long>()
     init { setHasStableIds(true) }
     class Holder(view: View) : RecyclerView.ViewHolder(view)
     override fun getItemCount() = items.size
-    override fun getItemId(position: Int) = items[position].id
+    override fun getItemId(position: Int) = stableIds.getOrPut(items[position].id) { stableIds.size.toLong() }
 
     fun clear() {
         val size = items.size
