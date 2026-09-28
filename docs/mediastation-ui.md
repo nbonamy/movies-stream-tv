@@ -9,7 +9,7 @@ MediaStation is the UI reference. Reuse its resources before writing a new style
 | Timeline | `res/layout/playback_controller.xml`, `res/drawable/playback_controls_bg.xml` |
 | Pickers | `ui/DialogUtils.java`, `res/layout/dialog_tv_action.xml`, `res/layout/item_tv_dialog_action.xml`, associated drawable and text selectors |
 | Gallery | `res/layout/item_media_item_video.xml`, `res/layout/section_header.xml`, card backgrounds, foreground focus selector, elevation animator |
-| Movie details | `res/layout/item_movie_details.xml`, poster background, action selector, backdrop scrim |
+| Movie details | Lato typography, action selector, backdrop scrim; adapted full-screen artwork layout |
 | Header and search | Music's `res/layout/browser_header.xml`, `res/drawable/search_input_background.xml`, native Leanback SearchBar and Lato typography |
 
 Colors, dimensions, font weights, and styles are imported from the corresponding MediaStation resource definitions. The launcher retains Music's blue background, cream artwork, and yellow accent, with a movie glyph.
@@ -17,7 +17,7 @@ Colors, dimensions, font weights, and styles are imported from the corresponding
 ## Adaptations
 
 - The gallery layout uses `LinearLayout` in place of `NonOverlappingLinearLayout`; provider-inapplicable badges and episode tags are removed. Card sizing, artwork, title styling, focus foreground, and elevation come from MediaStation. Continue watching cards restore MediaStation's resume progress bar; TV entries show the season and episode in their title.
-- The details layout omits the cast RecyclerView. Binding hides unavailable metadata and library-management actions. Available title, year, rating, artwork, synopsis, and Watch action retain their original layout.
+- The details screen follows the approved full-screen artwork concept: provider backdrop (poster fallback), a dark left scrim, and a compact left column with type, larger title, year/rating, larger synopsis, and Watch/Episodes below. It retains MediaStation typography, colors, and action focus styling. Titles allow two lines, synopses five; the content can scroll if needed on smaller viewports. Missing metadata collapses without leaving a separator. No separate poster or library-management actions are rendered.
 - `DialogUtils` changes package and theme lookup, and omits the unused legacy builder. Bottom positioning, selected/focused styling, dim amount, scrolling, and entrance/dismissal animations are preserved.
 - Android 26–27 uses `textStyle="bold"` for the action label; Android 28+ retains MediaStation's original font-weight style.
 - Search binds Vidbox movie results to the gallery. It uses the same native search widget, input background, font, and speech-orb colors as Music.
