@@ -519,13 +519,18 @@ class MainActivity : ComponentActivity() {
         }
         val details = layoutInflater.inflate(R.layout.item_movie_details, detailOverlay, false)
         detailOverlay.addView(details)
-        val poster = details.findViewById<ImageView>(R.id.movie_poster)
-        images.load(movie.poster, poster) { bitmap -> if (bitmap != null) poster.setImageBitmap(bitmap) }
+        details.findViewById<TextView>(R.id.movie_type).setText(
+            if (movie.type == MediaType.TV) R.string.details_type_tv else R.string.details_type_movie,
+        )
         details.findViewById<TextView>(R.id.movie_title).text = movie.title
         details.findViewById<TextView>(R.id.movie_year).apply {
             text = movie.releaseDate.take(4)
             visibility = if (text.isBlank()) View.GONE else View.VISIBLE
         }
+        details.findViewById<View>(R.id.movie_meta).visibility =
+            if (movie.releaseDate.isBlank() && movie.rating.isBlank()) View.GONE else View.VISIBLE
+        details.findViewById<View>(R.id.movie_rating_separator).visibility =
+            if (movie.releaseDate.isBlank() || movie.rating.isBlank()) View.GONE else View.VISIBLE
         details.findViewById<TextView>(R.id.movie_rating).text = movie.rating
         if (movie.rating.isBlank()) {
             details.findViewById<View>(R.id.movie_rating).visibility = View.GONE
@@ -535,10 +540,6 @@ class MainActivity : ComponentActivity() {
             text = movie.overview
             visibility = if (movie.overview.isBlank()) View.GONE else View.VISIBLE
         }
-        listOf(R.id.movie_tagline, R.id.movie_duration, R.id.movie_year_separator,
-            R.id.movie_badge_separator, R.id.movie_badges, R.id.movie_genres,
-            R.id.movie_tech_details, R.id.movie_director, R.id.action_watched, R.id.action_update)
-            .forEach { details.findViewById<View>(it).visibility = View.GONE }
         val watch = details.findViewById<View>(R.id.action_watch)
         watch.nextFocusRightId = watch.id
         details.findViewById<TextView>(R.id.action_watch_label).text =
