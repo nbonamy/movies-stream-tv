@@ -30,8 +30,20 @@ class SiteMenuDialogTest {
                 dialog?.show()
             }
             fun focused(label: String) {
-                instrumentation.waitForIdleSync()
-                instrumentation.runOnMainSync { assertEquals(label, (dialog?.currentFocus as? TextView)?.text?.toString()) }
+                // Main-loop idle does not guarantee window focus or dispatched input.
+                val deadline = android.os.SystemClock.uptimeMillis() + 5_000
+                var actual: String? = null
+                var ownsInput = false
+                do {
+                    instrumentation.runOnMainSync {
+                        actual = (dialog?.currentFocus as? TextView)?.text?.toString()
+                        ownsInput = dialog?.window?.decorView?.hasWindowFocus() == true
+                    }
+                    if (ownsInput && actual == label) return
+                    android.os.SystemClock.sleep(20)
+                } while (android.os.SystemClock.uptimeMillis() < deadline)
+                assertTrue("Dialog window must own input", ownsInput)
+                assertEquals(label, actual)
             }
             focused("Movies")
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN)

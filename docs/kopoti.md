@@ -32,9 +32,15 @@ is claimed for Kopoti IDs; embedded subtitles still work.
 - A temporary live JVM smoke check passed for both sections: 20 initial titles,
   continuation, synopsis, source discovery/resolution, HLS playlist and its first
   referenced resource. A search for `ines` found Inès in Spectacles.
-- Native device playback is not verified. Emulator work was stopped at the
-  user's request. The corrected section-aware instrumentation fixtures compile;
-  their final run remains deferred.
+- Android TV emulator validation passed: both section catalogs and details,
+  native playback of a film (00:24 of 1:36:40) and a spectacle (00:29 of 1:15:56),
+  and phone search for `ines` returning Inès Reg within Spectacles.
+- Force-stopping and reopening the app restored Kopoti / Spectacles. Existing
+  film playback also appeared in Continue watching after reopening.
+- All five Android instrumentation tests pass. The menu test waits for actual
+  dialog window focus and the expected focused row before sending the next key;
+  main-loop idle alone can precede window focus or input dispatch.
+- Physical TV playback and episode auto-binging were not exercised in this pass.
 
 Cloudflare may challenge clients differently over time. Validation used the
 app's native HTTP user agent without imported browser cookies or a browser runtime.
