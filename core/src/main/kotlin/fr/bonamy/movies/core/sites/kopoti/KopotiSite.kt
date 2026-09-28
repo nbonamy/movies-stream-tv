@@ -13,8 +13,6 @@ import okhttp3.OkHttpClient
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.io.IOException
-import java.text.Normalizer
-import java.util.Locale
 
 class KopotiSite internal constructor(
     http: OkHttpClient,
@@ -24,7 +22,7 @@ class KopotiSite internal constructor(
     override val descriptor = SiteDescriptor(ID, "Kopoti", listOf(
         SiteSection("films", "À l'affiche", MediaType.MOVIE),
         SiteSection("spectacles", "Spectacles", MediaType.MOVIE),
-    ))
+    ), SearchScope.SITE)
     override val series: SeriesCatalog? = null
     private val folder = home.pathSegments.first()
     private val prefix = "/$folder/b/kopoti/"
@@ -34,34 +32,34 @@ class KopotiSite internal constructor(
     override suspend fun browse(request: CatalogRequest, after: PageToken?): CatalogPage = runInterruptible(Dispatchers.IO) {
         descriptor.section(request.sectionId)
         require(after == null || after.siteId == ID && after.request == request) { "Page belongs to another catalog" }
-        var offset = after?.value?.toInt() ?: 0
+        val offset = after?.value?.toInt() ?: 0
         require(offset >= 0)
-        val query = request.query?.trim()?.takeIf { it.isNotEmpty() }?.let(::searchText)
-        // The category endpoint has no search parameter. Scan within this category,
-        // stopping as soon as a matching page is found, so sections cannot leak.
-        while (true) {
-            val url = home.resolve("/$folder/api_category.php")!!.newBuilder()
-                .addQueryParameter("catid", if (request.sectionId == "films") "29" else "3")
-                .addQueryParameter("offset", offset.toString()).addQueryParameter("limit", "20")
-                .addQueryParameter("folder", folder).addQueryParameter("pr", "kopoti").build()
-            val data = JsonParser.parseString(transport.text(url, home.toString())).asJsonObject
-            val films = data.getAsJsonArray("films") ?: throw IOException("Kopoti catalog unavailable")
-            val items = films.map { entry ->
-                val film = entry.asJsonObject
-                val link = ownedUrl(film.string("link"))
-                val rawTitle = Jsoup.parseBodyFragment(film.string("title")).text()
-                val year = YEAR.find(rawTitle)
-                val poster = film.get("poster")?.takeUnless { it.isJsonNull }?.asString.orEmpty()
-                Title(link.encodedPath.removePrefix(prefix), rawTitle.replace(YEAR, "").trim(), poster, poster,
-                    "", "", year?.groupValues?.get(1).orEmpty(), MediaType.MOVIE, ID, request.sectionId)
+        val query = request.query?.trim()?.takeIf { it.isNotEmpty() }
+        // Kopoti's website search covers all categories, independent of the home section.
+        val endpoint = if (query == null) "api_category.php" else "api_search.php"
+        val url = home.resolve("/$folder/$endpoint")!!.newBuilder()
+            .apply {
+                if (query == null) addQueryParameter("catid", if (request.sectionId == "films") "29" else "3")
+                else addQueryParameter("searchword", query)
             }
-            offset += films.size()
-            val more = data.get("hasMore")?.asBoolean == true && films.size() > 0
-            val matches = if (query == null) items else items.filter { searchText(it.title).contains(query) }
-            if (matches.isNotEmpty() || !more) return@runInterruptible CatalogPage(matches,
-                if (more) PageToken(ID, request, offset.toString()) else null)
+            .addQueryParameter("offset", offset.toString()).addQueryParameter("limit", "20")
+            .addQueryParameter("folder", folder).addQueryParameter("pr", "kopoti").build()
+        val data = JsonParser.parseString(transport.text(url, home.toString())).asJsonObject
+        val films = data.getAsJsonArray("films") ?: throw IOException("Kopoti catalog unavailable")
+        val items = films.map { entry ->
+            val film = entry.asJsonObject
+            val link = ownedUrl(film.string("link"))
+            val rawTitle = Jsoup.parseBodyFragment(film.string("title")).text()
+            val year = YEAR.find(rawTitle)
+            val poster = film.get("poster")?.takeUnless { it.isJsonNull }?.asString.orEmpty()
+            Title(link.encodedPath.removePrefix(prefix), rawTitle.replace(YEAR, "").trim(), poster, poster,
+                "", "", year?.groupValues?.get(1).orEmpty(), MediaType.MOVIE, ID,
+                if (query == null) request.sectionId
+                else if (film.string("cat").equals("Spectacle", ignoreCase = true)) "spectacles" else "films")
         }
-        @Suppress("UNREACHABLE_CODE") error("Unreachable")
+        val more = data.get("hasMore")?.asBoolean == true && films.size() > 0
+        CatalogPage(items,
+            if (more) PageToken(ID, request, (offset + films.size()).toString()) else null)
     }
 
     override suspend fun details(title: Title): Title = runInterruptible(Dispatchers.IO) {
@@ -102,8 +100,6 @@ class KopotiSite internal constructor(
         if (!extractor.supports(url)) throw IOException("Unsupported Kopoti playback host")
         return url
     }
-    private fun searchText(text: String) = Normalizer.normalize(text, Normalizer.Form.NFD)
-        .replace(Regex("\\p{M}+"), "").lowercase(Locale.ROOT)
 
     companion object {
         const val ID = "kopoti"

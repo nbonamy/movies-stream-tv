@@ -12,7 +12,7 @@ the same media type; section identity is independent of playback identity.
 | `SeriesCatalog` | Seasons and episodes; absent on movie-only sites |
 | `CatalogBrowser` | Current site/query, opaque continuation, deduplication, stale-result rejection |
 | `sites/vidbox` | Vidbox requests, parsing, TMDB identity mapping and numbered pagination |
-| `sites/kopoti` | Category pagination, section-scoped search, HTML details and ShareCloudy source discovery |
+| `sites/kopoti` | Category pagination, unified search, HTML details and ShareCloudy source discovery |
 | `extractors` | Max, Vidpro, VidRock and ShareCloudy request/configuration chains |
 | `HttpTransport` | Bounded responses, per-request timeouts, cancellation checks and validated redirects/destinations |
 | `SubtitleClient` | French/English lookup and download from normalized IMDb/episode metadata |
@@ -66,6 +66,11 @@ subtitle method defaults to no online lookup; in-stream tracks remain available.
 `CatalogRequest(sectionId, query)` is shared by home catalogs and search. A null query
 means the site's home catalog. Every site implements its own search requests and
 parsing behind `browse`; the UI never falls back to searching Vidbox.
+`SiteDescriptor.searchScope` declares section-scoped search (Vidbox, the default)
+or site-wide search (Kopoti). Site-wide search may return titles from any declared
+section, with their actual `sectionId` and matching playback type. Home browsing
+still requires every result to belong to the requested section. Site-wide search
+uses the site name in the search prompt and breadcrumb.
 
 `CatalogPage.next` is an opaque token scoped to the site, section and query.
 Null means the end. The UI appends as remote focus approaches the bottom, keeping

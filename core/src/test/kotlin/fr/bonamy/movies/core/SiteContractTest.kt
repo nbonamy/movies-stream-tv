@@ -62,6 +62,15 @@ class SiteContractTest {
         assertThrows(IllegalArgumentException::class.java) { runBlocking { browser.loadNext() } }
         browser.reset(site, CatalogRequest("films"))
         assertEquals("42", browser.loadNext()!!.single().id)
+        browser.reset(site, CatalogRequest("stage", "search"))
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { browser.loadNext() } }
+        val unified = object : StreamingSite by site {
+            override val descriptor = site.descriptor.copy(searchScope = SearchScope.SITE)
+        }
+        browser.reset(unified, CatalogRequest("stage", "search"))
+        assertEquals("films", browser.loadNext()!!.single().sectionId)
+        browser.reset(unified, CatalogRequest("stage"))
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { browser.loadNext() } }
     }
 
     @Test fun anEditInvalidatesResultsBeforeTheNextDebouncedSearchStarts() = runBlocking {

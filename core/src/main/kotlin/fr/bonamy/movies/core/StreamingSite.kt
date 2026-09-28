@@ -5,7 +5,10 @@ data class SiteSection(val id: String, val title: String, val mediaType: MediaTy
     init { require(id.isNotBlank() && title.isNotBlank()) }
 }
 
-data class SiteDescriptor(val id: String, val name: String, val sections: List<SiteSection>) {
+enum class SearchScope { SECTION, SITE }
+
+data class SiteDescriptor(val id: String, val name: String, val sections: List<SiteSection>,
+    val searchScope: SearchScope = SearchScope.SECTION) {
     init { require(id.isNotBlank() && sections.isNotEmpty() && sections.map { it.id }.distinct().size == sections.size) }
     fun section(id: String): SiteSection = sections.first { it.id == id }
 }

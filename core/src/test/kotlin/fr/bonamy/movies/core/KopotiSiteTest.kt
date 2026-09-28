@@ -9,22 +9,28 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class KopotiSiteTest {
-    @Test fun categoriesKeepTheirOwnPaginationAndSearchScansPastNonmatchingPages() = runBlocking<Unit> {
+    @Test fun categoriesKeepTheirOwnPaginationWhileSearchReturnsAllCategories() = runBlocking<Unit> {
         MockWebServer().use { server ->
             val site = KopotiSite(OkHttpClient(), server.url("/folder/home/kopoti/"))
             server.enqueue(json("Other", "10", true))
             val films = site.browse(CatalogRequest("films"))
             assertEquals("29", server.takeRequest().requestUrl!!.queryParameter("catid"))
             assertEquals("films", films.items.single().sectionId)
-            server.enqueue(json("Unrelated", "11", true))
-            server.enqueue(json("Inès &amp; friends (2026)", "12", false))
-            val shows = site.browse(CatalogRequest("spectacles", "ines"))
-            assertEquals("Inès & friends", shows.items.single().title)
+            server.enqueue(json("Foresti (2026)", "11", true))
+            val query = CatalogRequest("films", "foresti")
+            val first = site.browse(query)
+            assertEquals("films", first.items.single().sectionId)
+            server.enqueue(json("Florence Foresti &amp; friends (2026)", "12", false, "Spectacle"))
+            val shows = site.browse(query, first.next)
+            assertEquals("Florence Foresti & friends", shows.items.single().title)
             assertEquals("2026", shows.items.single().releaseDate)
             assertEquals("spectacles", shows.items.single().sectionId)
             assertEquals(MediaType.MOVIE, shows.items.single().type)
             assertNull(shows.next)
-            assertEquals("3", server.takeRequest().requestUrl!!.queryParameter("catid"))
+            val search = server.takeRequest().requestUrl!!
+            assertEquals("/folder/api_search.php", search.encodedPath)
+            assertEquals("foresti", search.queryParameter("searchword"))
+            assertNull(search.queryParameter("catid"))
             assertEquals("1", server.takeRequest().requestUrl!!.queryParameter("offset"))
             assertThrows(IllegalArgumentException::class.java) { runBlocking {
                 site.browse(CatalogRequest("spectacles"), films.next)
@@ -32,6 +38,22 @@ class KopotiSiteTest {
             server.enqueue(json("Next", "13", false))
             assertEquals("13", site.browse(CatalogRequest("films"), films.next).items.single().id)
             assertEquals("1", server.takeRequest().requestUrl!!.queryParameter("offset"))
+        }
+    }
+
+    @Test fun filmSearchFindsOlderTitlesOutsideTheFeaturedCategory() = runBlocking<Unit> {
+        MockWebServer().use { server ->
+            server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) =
+                    if (request.requestUrl!!.encodedPath == "/folder/api_search.php")
+                        json("Tout le bleu du ciel (2025)", "591572817", false)
+                    else MockResponse().setBody("""{"films":[],"hasMore":false}""")
+            }
+            val site = KopotiSite(OkHttpClient(), server.url("/folder/home/kopoti/"))
+            val results = site.browse(CatalogRequest("films", "tout le bleu"))
+            assertEquals("Tout le bleu du ciel", results.items.single().title)
+            assertEquals("films", results.items.single().sectionId)
+            assertEquals("tout le bleu", server.takeRequest().requestUrl!!.queryParameter("searchword"))
         }
     }
 
@@ -83,8 +105,8 @@ class KopotiSiteTest {
         }
     }
 
-    private fun json(title: String, id: String, more: Boolean) = MockResponse().setBody("""
+    private fun json(title: String, id: String, more: Boolean, category: String = "Drame") = MockResponse().setBody("""
         {"films":[{"id":"99","title":"$title","poster":"https://images.example/poster.jpg",
-        "link":"/folder/b/kopoti/$id"}],"hasMore":$more}
+        "link":"/folder/b/kopoti/$id","cat":"$category"}],"hasMore":$more}
     """)
 }

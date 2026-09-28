@@ -50,6 +50,7 @@ import androidx.media3.ui.PlayerView
 import fr.bonamy.movies.core.Title
 import fr.bonamy.movies.core.MediaType
 import fr.bonamy.movies.core.PlayableRef
+import fr.bonamy.movies.core.SearchScope
 import fr.bonamy.movies.core.StreamingSite
 import fr.bonamy.movies.core.CatalogRequest
 import fr.bonamy.movies.core.CatalogBrowser
@@ -227,7 +228,7 @@ class MainActivity : ComponentActivity() {
         searchBar.setSpeechRecognitionCallback {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                .putExtra(RecognizerIntent.EXTRA_PROMPT, "Search ${catalogSection.title.lowercase()}")
+                .putExtra(RecognizerIntent.EXTRA_PROMPT, "Search ${searchLabel.lowercase()}")
             runCatching { voiceSearch.launch(intent) }.onFailure {
                 searchBar.findViewById<View>(androidx.leanback.R.id.lb_search_text_editor).requestFocus()
             }
@@ -361,7 +362,7 @@ class MainActivity : ComponentActivity() {
         movieGrid.requestFocus()
     }
 
-    private fun showSectionMenu(site: fr.bonamy.movies.core.StreamingSite = activeSite) {
+    private fun showSectionMenu(site: StreamingSite = activeSite) {
         browserDialog?.dismiss()
         browserDialog = SiteMenuDialog.create(this, sites.menu(site), sitePreferences.section(site.descriptor),
             title = "Browse ${site.descriptor.name}") { item ->
@@ -389,7 +390,7 @@ class MainActivity : ComponentActivity() {
             catalogSection = sitePreferences.section(activeSite.descriptor)
             searchQuery = ""
             searchBar.setSearchQuery("")
-            searchBar.title = catalogSection.title
+            searchBar.title = searchLabel
             loadLatest()
         }.also { it.show() }
     }
@@ -400,16 +401,21 @@ class MainActivity : ComponentActivity() {
         catalogQuery = null
         breadcrumb.text = "${activeSite.descriptor.name} / ${catalogSection.title}"
         heading.text = catalogSection.title
-        searchBar.title = catalogSection.title
-        root.findViewById<ImageButton>(R.id.search).contentDescription = "Search ${catalogSection.title.lowercase()}"
+        searchBar.title = searchLabel
+        root.findViewById<ImageButton>(R.id.search).contentDescription = "Search ${searchLabel.lowercase()}"
         refreshContinueWatching()
         loadCatalogPage()
     }
 
+    private val searchLabel: String
+        get() = if (activeSite.descriptor.searchScope == SearchScope.SITE) activeSite.descriptor.name else catalogSection.title
+
     private fun search(submitted: Boolean = true) {
         val query = searchQuery.trim().takeIf { it.isNotEmpty() }
         catalogQuery = query
-        breadcrumb.text = "${activeSite.descriptor.name} / ${catalogSection.title}" + if (query == null) "" else " / Search"
+        breadcrumb.text = if (query != null && activeSite.descriptor.searchScope == SearchScope.SITE)
+            "${activeSite.descriptor.name} / Search"
+        else "${activeSite.descriptor.name} / ${catalogSection.title}" + if (query == null) "" else " / Search"
         heading.text = if (query == null) catalogSection.title else "Results for “$query”"
         loadCatalogPage()
         // Editing updates results without submitting or changing keyboard focus.

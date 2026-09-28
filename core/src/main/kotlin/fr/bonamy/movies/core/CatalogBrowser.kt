@@ -26,7 +26,13 @@ class CatalogBrowser(site: StreamingSite, request: CatalogRequest) {
         try {
             val page = current.site.browse(current.request, current.next)
             if (state !== current) return null
-            require(page.items.all { it.siteId == current.site.descriptor.id && it.sectionId == current.request.sectionId && it.type == current.site.descriptor.section(current.request.sectionId).mediaType })
+            val descriptor = current.site.descriptor
+            val siteSearch = !current.request.query.isNullOrBlank() && descriptor.searchScope == SearchScope.SITE
+            require(page.items.all { item ->
+                item.siteId == descriptor.id &&
+                    (siteSearch || item.sectionId == current.request.sectionId) &&
+                    descriptor.sections.any { it.id == item.sectionId && it.mediaType == item.type }
+            })
             require(page.next == null || (page.next.siteId == current.site.descriptor.id && page.next.request == current.request))
             require(page.next == null || page.next != current.next) { "Site repeated its page token" }
             val known = current.items.map { it.ref }.toSet()

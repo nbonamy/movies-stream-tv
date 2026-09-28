@@ -4,7 +4,7 @@ A native Android TV browser for Vidbox movies and TV shows and Kopoti films (À 
 
 ## Remote
 
-- Use the **hamburger menu** to switch between the selected site’s **sections** and other registered sites. Search stays within the selected site and section; edits are debounced without dismissing the keyboard.
+- Use the **hamburger menu** to switch between the selected site’s **sections** and other registered sites. Search follows the selected site’s scope (all of Kopoti or the current Vidbox section); edits are debounced without dismissing the keyboard.
 - Open **Search** and scan the QR code to search from your phone. Use the same network and keep Movies Stream open on the TV. The phone mini site sends your query to the selected site and its current section; results appear on the TV. The address below the QR code also works in a browser.
 - Keep navigating **Down** to load more titles automatically; there are no page buttons.
 - **Continue watching** appears above the popular catalog in each section, separately for each site. Select a card to resume directly; reopening a title from its details or episode list also restores its position.
@@ -32,4 +32,4 @@ Run `./gradlew check :app:assembleDebug`. The APK is written to `app/build/outpu
 
 Playback progress stays on this device and survives app restarts and updates. It is saved every five seconds and on pause, seek, exit, or backgrounding. Like MediaStation, playback becomes resumable after 30 seconds and leaves Continue watching after 95% or completion. Source changes retain the same title's progress. See [resume playback](docs/resume-playback.md).
 
-Kopoti uses its category API for À l’affiche and Spectacles. Search filters titles within the selected category (accent-insensitive); it may scan several pages. See [Kopoti integration](docs/kopoti.md).
+Kopoti uses its category API for À l’affiche and Spectacles. Search uses its website search API across all categories, including films outside À l’affiche and spectacles. See [Kopoti integration](docs/kopoti.md).
