@@ -35,3 +35,12 @@ Colors, dimensions, font weights, and styles are imported from the corresponding
 On the Android TV emulator: inspect gallery, details, player underline, bottom sheets, and search; verify the three Back layers and quality selection. For The Odyssey, the default rendition decoded at 1920×1000 (1080p with cropped letterboxing), and selecting 360p switched decoding to 640×334 while retaining playback position.
 
 Run `./gradlew check :app:lintDebug :app:assembleDebug` before deployment. TV deployments install the APK without launching it.
+
+## Phone search
+
+Music's `RemoteSearchServer`, `RemoteSearchAddress`, `QrCodeBitmap`, QR frame,
+and mini-site styles are reused for phone search. The server lives in `:core`
+for socket-level tests; Android lifecycle and QR display live in `:app`.
+The Movies adaptation includes only search, uses ports 8070–8079 to coexist
+with Music, and stops listening when the activity is no longer visible.
+The mini site has Movies branding and searches the mode selected on the TV.

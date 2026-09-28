@@ -19,6 +19,7 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.5.2")
     androidTestImplementation("junit:junit:4.13.2")
     implementation(project(":core"))
+    implementation("com.google.zxing:core:3.5.3")
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.leanback:leanback:1.2.0")
     implementation("androidx.fragment:fragment:1.8.9")

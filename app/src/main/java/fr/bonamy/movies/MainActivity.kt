@@ -109,6 +109,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var searchBar: SearchBar
     private var searchQuery = ""
     private var searchJob: Job? = null
+    private lateinit var remoteSearch: RemoteSearchController
     private lateinit var searchPanel: LinearLayout
     private lateinit var detailOverlay: FrameLayout
     private lateinit var playerLayer: FrameLayout
@@ -216,7 +217,13 @@ class MainActivity : ComponentActivity() {
                 override fun onKeyboardDismiss(query: String) { focusCatalogStart() }
             })
         }
-        searchPanel.addView(searchBar, LinearLayout.LayoutParams(-1, -2))
+        val searchRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        searchPanel.addView(searchRow, LinearLayout.LayoutParams(-1, -2))
+        searchRow.addView(searchBar, LinearLayout.LayoutParams(0, -2, 1f))
+        remoteSearch = RemoteSearchController(this, ::submitRemoteSearch)
+        searchRow.addView(remoteSearch.shortcut, LinearLayout.LayoutParams(-2, -2).apply {
+            rightMargin = dp(36)
+        })
         searchBar.setSpeechRecognitionCallback {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -330,9 +337,28 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun showSearch() {
+        remoteSearch.start()
         searchPanel.visibility = View.VISIBLE
         refreshContinueWatching()
         searchBar.requestFocus()
+    }
+
+    private fun submitRemoteSearch(query: String) {
+        detailJob?.cancel()
+        detailSession.invalidate()
+        browserDialog?.dismiss()
+        if (playerLayer.visibility == View.VISIBLE) closePlayer()
+        episodeJob?.cancel()
+        episodeOverlay.visibility = View.GONE
+        detailOverlay.visibility = View.GONE
+        gallery.visibility = View.VISIBLE
+        searchPanel.visibility = View.VISIBLE
+        refreshContinueWatching()
+        searchBar.setSearchQuery(query)
+        searchQuery = query
+        searchJob?.cancel()
+        search()
+        movieGrid.requestFocus()
     }
 
     private fun showModeMenu() {
@@ -1103,7 +1129,13 @@ class MainActivity : ComponentActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
+    override fun onStart() {
+        super.onStart()
+        remoteSearch.start()
+    }
+
     override fun onStop() {
+        remoteSearch.stop()
         savePlaybackProgress()
         player?.pause()
         super.onStop()

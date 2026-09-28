@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<meta name="apple-mobile-web-app-title" content="Movies">
+	<link rel="icon" type="image/x-icon" href="/movies-favicon.ico">
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+	<title>Movies</title>
+	<style>
+		:root {
+			color-scheme: dark;
+			font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+		}
+
+		* { box-sizing: border-box; }
+
+		body {
+			margin: 0;
+			min-height: 100vh;
+			padding: 24px;
+			background: radial-gradient(circle at top, #12345b 0, #07111d 55%, #03070d 100%);
+			color: #f5f7fb;
+		}
+
+		.scene { width: min(100%, 520px); margin: auto; }
+		.face { padding: 36px; border: 1px solid #345a7e; border-radius: 24px;
+			background: rgba(14, 25, 39, .97); box-shadow: 0 24px 70px #0009; }
+
+		.brand {
+			display: flex;
+			align-items: center;
+			gap: 13px;
+			margin: 0 0 18px;
+		}
+
+		.brand img {
+			width: 44px;
+			height: 44px;
+			border-radius: 11px;
+			box-shadow: 0 8px 20px #0005;
+		}
+
+		.eyebrow {
+			margin: 0;
+			color: #5db7f0;
+			font-size: 1.5rem;
+			font-weight: 800;
+			letter-spacing: .16em;
+		}
+
+		h1 {
+			margin: 0;
+			font-size: clamp(2rem, 9vw, 3.25rem);
+			line-height: 1.02;
+			letter-spacing: -.045em;
+		}
+
+		.intro {
+			margin: 16px 0 28px;
+			color: #b9c7d6;
+			font-size: 1.05rem;
+			line-height: 1.55;
+		}
+
+		form { display: grid; gap: 14px; }
+
+		input,
+		button {
+			width: 100%;
+			min-height: 58px;
+			border-radius: 14px;
+			font: inherit;
+		}
+
+		input {
+			border: 1px solid #496782;
+			background: #08121e;
+			color: white;
+			padding: 0 18px;
+			font-size: 1.1rem;
+			outline: none;
+		}
+
+		input:focus {
+			border-color: #54b7f0;
+			box-shadow: 0 0 0 4px #3498da33;
+		}
+
+		button {
+			border: 0;
+			background: #3498da;
+			color: white;
+			font-weight: 800;
+			cursor: pointer;
+			touch-action: manipulation;
+			-webkit-user-select: none;
+			user-select: none;
+		}
+
+		button:active { transform: scale(.97); }
+
+		.status {
+			margin: 16px 0 0;
+			padding: 12px 14px;
+			border-radius: 12px;
+		}
+
+		.success { background: #173f36; color: #b8f5dc; }
+		.error { background: #4b2528; color: #ffd0d0; }
+
+		@media (max-width: 420px) {
+			body { padding: 14px; }
+			.face { padding: 26px 22px; }
+		}
+
+	</style>
+</head>
+<body>
+	<main class="scene">
+		<div class="card">
+			<section class="face front" aria-hidden="false">
+				<div class="brand">
+					<img class="app-icon" src="/icon.png" alt="Movies app icon">
+					<p class="eyebrow">MOVIES</p>
+				</div>
+				<h1>What do you want to watch?</h1>
+				<p class="intro">Search the Movies or TV Shows mode selected on your TV. Keep Movies Stream open and connect your phone to the same network.</p>
+				<form action="/search" method="get">
+					<input name="q" type="search" minlength="2" maxlength="200" aria-label="Movie or TV show title" placeholder="Movie or TV show…" autocomplete="off" autofocus required>
+					<button type="submit">Search on TV</button>
+				</form>
+				<!--STATUS-->
+			</section>
+		</div>
+	</main>
+</body>
+</html>
