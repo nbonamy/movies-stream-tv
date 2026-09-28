@@ -6,6 +6,9 @@ import fr.bonamy.movies.core.MediaType
 import fr.bonamy.movies.core.Title
 import fr.bonamy.movies.core.PlayableRef
 import fr.bonamy.movies.core.TitleRef
+import fr.bonamy.movies.core.SubtitleSelection
+import fr.bonamy.movies.core.SubtitleLanguage
+import fr.bonamy.movies.core.OnlineSubtitle
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
@@ -65,6 +68,33 @@ class PlaybackProgressTest {
         preferences.edit().putString("broken", "{").apply()
         save(180_000)
         assertEquals(listOf(target), store.list(movie.siteId, "movie").map { it.target })
+    }
+
+    @Test fun restoresSubtitleIdentityAndSavesChangesWhilePausedWithoutLeakingToOtherItems() {
+        val target = PlayableRef(show.ref, "1/2", 1, 2)
+        val store = PlaybackProgress(preferences)
+        val choices = listOf(
+            SubtitleSelection.Online(OnlineSubtitle("123", SubtitleLanguage.FRENCH, "Show.S01E02.WEB.srt",
+                "https://dl.opensubtitles.org/download/123", "UTF-8", 50)),
+            SubtitleSelection.Embedded("eng", "track-2", "English SDH", 128),
+            SubtitleSelection.Off,
+        )
+        for (choice in choices) {
+            // The same position exercises changing subtitles while paused.
+            store.save(show, target, "Second", "", 120_000, 900_000, subtitle = choice)
+            val reopened = PlaybackProgress(preferences)
+            assertEquals(choice, reopened.subtitle(target))
+            assertEquals(120_000L, reopened.position(target))
+            assertNull(reopened.subtitle(PlayableRef(show.ref, "1/3", 1, 3)))
+            assertNull(reopened.subtitle(target.copy(title = target.title.copy(siteId = "another-site"))))
+        }
+        val data = JSONObject(preferences.getString(target.key, null)!!)
+        data.put("subtitle", JSONObject().put("kind", "unknown-future-kind"))
+        preferences.edit().putString(target.key, data.toString()).commit()
+        assertEquals(120_000L, PlaybackProgress(preferences).position(target))
+        assertNull(PlaybackProgress(preferences).subtitle(target))
+        store.save(show, target, "Second", "", 900_000, 900_000, ended = true, subtitle = choices.first())
+        assertNull(PlaybackProgress(preferences).subtitle(target))
     }
     @Test fun keepsIdenticalIdsSeparateAcrossSitesAndMigratesLegacyVidboxOnce() {
         val legacy = JSONObject().put("id", "55").put("type", "TV").put("title", "Legacy show")

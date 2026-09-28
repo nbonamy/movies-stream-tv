@@ -13,6 +13,7 @@ A native Android TV browser for Vidbox movies and TV shows and Kopoti films (À 
 - Press **Up** during playback to focus **Subtitles**. Move **Right** through **Quality** and **Source**. Focus is indicated by MediaStation's white underline.
 - Open **Source** to switch servers. The app starts on Vidbox's **Max** default and remembers the selected available source separately for each site.
 - Open **Subtitles** to choose an in-stream track or search **French and English** subtitles online. Select a release to download it, or choose **Off**. See [subtitle discovery](docs/subtitles.md).
+- In-progress playback remembers the selected subtitle (including Off). Auto-binging loads subtitles in the previous episode’s language automatically, using the new episode’s own subtitle file.
 - Playback starts at the highest supported bitrate. **Quality** lists the available resolutions and **Auto**; switching preserves playback position.
 - Use the native Media3 controls to pause and seek.
 - At the end of a movie, the player closes. TV playback starts the next episode
@@ -26,9 +27,23 @@ A native Android TV browser for Vidbox movies and TV shows and Kopoti films (À 
 - `:app` renders native Android views and plays HLS/MP4 with Media3 ExoPlayer. Register additional sites in `AppServices.sites`; menus follow their capabilities.
 - No browser component or provider JavaScript is included in the app.
 
-## Build
+## Build and deploy
 
-Run `./gradlew check :app:assembleDebug`. The APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+Run `make check` for tests, lint and the debug build, or `make build` to build only.
+The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. Deployments use
+this debug APK and preserve existing app data with `adb install -r`.
+
+```sh
+make deploy             # Build and install on TV (192.168.1.4:5555), without launching
+make run                # Restart the installed app on TV
+make deploy-emulator    # Build, install and restart on emulator-5554
+make install-emulator   # Build and install on emulator without launching
+```
+
+Like MediaStation, override the target with `ANDROID_TV_DEVICE`:
+`make deploy ANDROID_TV_DEVICE=192.168.1.10:5555`. For another running emulator,
+use `make deploy-emulator ANDROID_EMULATOR_DEVICE=emulator-5556`.
+Run `make devices` to list connected devices and `make help` for all targets.
 
 Playback progress stays on this device and survives app restarts and updates. It is saved every five seconds and on pause, seek, exit, or backgrounding. Like MediaStation, playback becomes resumable after 30 seconds and leaves Continue watching after 95% or completion. Source changes retain the same title's progress. See [resume playback](docs/resume-playback.md).
 

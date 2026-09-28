@@ -63,6 +63,9 @@ import fr.bonamy.movies.core.SubtitleClient
 import fr.bonamy.movies.core.SubtitleContext
 import fr.bonamy.movies.core.SubtitleSearch
 import fr.bonamy.movies.core.OnlineSubtitle
+import fr.bonamy.movies.core.SubtitleSelection
+import fr.bonamy.movies.core.SubtitleLanguage
+import fr.bonamy.movies.core.subtitleLanguageCode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runInterruptible
@@ -95,6 +98,8 @@ class MainActivity : ComponentActivity() {
     private var subtitleSearch: SubtitleSearch? = null
     private var onlineSubtitle: OnlineSubtitle? = null
     private var pendingSubtitle: OnlineSubtitle? = null
+    private var selectedSubtitle: SubtitleSelection? = null
+    private var subtitleToRestore: SubtitleSelection? = null
     private val images = PosterLoader()
     private lateinit var root: FrameLayout
     private lateinit var gallery: LinearLayout
@@ -662,6 +667,8 @@ class MainActivity : ComponentActivity() {
     private fun openPlayer(movie: Title, target: PlayableRef, episodeName: String? = null,
         artwork: String = movie.poster, continuingSeries: Boolean = false) {
         val preferredSource = if (continuingSeries) currentSourceId else sitePreferences.source(target.siteId)
+        val subtitle = if (continuingSeries) currentSubtitleSelection()?.nextEpisode()
+            else playbackProgress.subtitle(target)
         playbackJob?.cancel()
         optionsDialog?.dismiss()
         releasePlayer()
@@ -696,7 +703,7 @@ class MainActivity : ComponentActivity() {
                 currentSourceId = options.preferred(preferredSource).id
                 sourceButton.isEnabled = true
                 val stream = site.resolve(target, currentSourceId)
-                if (playbackSession.isCurrent(ticket)) startPlayback(stream, resumePosition)
+                if (playbackSession.isCurrent(ticket)) startPlayback(stream, resumePosition, subtitle = subtitle)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -707,8 +714,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startPlayback(stream: ResolvedPlayback, startPosition: Long = 0, autoPlay: Boolean = true) {
+    private fun startPlayback(stream: ResolvedPlayback, startPosition: Long = 0, autoPlay: Boolean = true,
+        subtitle: SubtitleSelection? = currentSubtitleSelection()) {
         releasePlayer()
+        selectedSubtitle = subtitle
+        subtitleToRestore = subtitle
         subtitleContext = stream.subtitleContext
         val dataSource = DefaultHttpDataSource.Factory()
             .setDefaultRequestProperties(stream.requestHeaders)
@@ -718,6 +728,7 @@ class MainActivity : ComponentActivity() {
             .build()
         exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
             .setForceHighestSupportedBitrate(true)
+            .apply { if (subtitle != null) setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true) }
             .build()
         var endHandled = false
         exoPlayer.addListener(object : Player.Listener {
@@ -727,6 +738,10 @@ class MainActivity : ComponentActivity() {
                     endHandled = false
                     playbackReady = true
                     playerStatus.visibility = View.GONE
+                    subtitleToRestore?.let { choice ->
+                        subtitleToRestore = null
+                        restoreSubtitle(exoPlayer, choice)
+                    }
                 }
                 if (state == Player.STATE_ENDED && !endHandled) {
                     endHandled = true
@@ -864,6 +879,7 @@ class MainActivity : ComponentActivity() {
         val currentPlayer = player ?: return
         val target = currentTarget ?: return
         subtitleJob?.cancel()
+        subtitleToRestore = null
         val result = subtitleSearch
         val dialog = subtitleDialog(currentPlayer, result,
             if (result == null) "Searching French and English subtitles…" else null)
@@ -886,6 +902,111 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun embeddedSubtitle(group: Tracks.Group, index: Int): SubtitleSelection.Embedded {
+        val format = group.getTrackFormat(index)
+        return SubtitleSelection.Embedded(format.language, format.id, format.label, format.roleFlags)
+    }
+
+    private fun currentSubtitleSelection(): SubtitleSelection? {
+        selectedSubtitle?.let { return it }
+        val currentPlayer = player ?: return null
+        if (!playbackReady) return null
+        if (C.TRACK_TYPE_TEXT in currentPlayer.trackSelectionParameters.disabledTrackTypes) return SubtitleSelection.Off
+        currentPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.forEach { group ->
+            for (index in 0 until group.length) {
+                if (group.isTrackSelected(index)) return embeddedSubtitle(group, index)
+            }
+        }
+        return SubtitleSelection.Off
+    }
+
+    /** Runs once after tracks are known. User selection, source changes and exit cancel this job. */
+    private fun restoreSubtitle(currentPlayer: ExoPlayer, selection: SubtitleSelection) {
+        if (selection == SubtitleSelection.Off) return
+        val language = when (selection) {
+            is SubtitleSelection.Language -> subtitleLanguageCode(selection.code)
+            is SubtitleSelection.Embedded -> subtitleLanguageCode(selection.language)
+            is SubtitleSelection.Online -> selection.subtitle.language.code
+            SubtitleSelection.Off -> return
+        }
+        if (selection !is SubtitleSelection.Online) {
+            val tracks = currentPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+                .flatMap { group -> (0 until group.length).filter { group.isTrackSupported(it) }.map { group to it } }
+            val exact = if (selection is SubtitleSelection.Embedded) tracks.firstOrNull { (group, index) ->
+                embeddedSubtitle(group, index) == selection
+            } else null
+            val match = exact ?: tracks.firstOrNull { (group, index) ->
+                language != null && subtitleLanguageCode(group.getTrackFormat(index).language) == language
+            }
+            if (match != null) {
+                val (group, index) = match
+                selectedSubtitle = embeddedSubtitle(group, index)
+                currentPlayer.trackSelectionParameters = currentPlayer.trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, listOf(index))).build()
+                savePlaybackProgress()
+                return
+            }
+        }
+        val onlineLanguage = SubtitleLanguage.entries.firstOrNull { it.code == language } ?: return
+        val target = currentTarget ?: return
+        val site = playbackSite ?: return
+        subtitleJob?.cancel()
+        subtitleJob = lifecycleScope.launch {
+            try {
+                // Exact resume uses the same file. Search can refresh an expired download link.
+                val saved = (selection as? SubtitleSelection.Online)?.subtitle
+                if (saved != null) {
+                    try {
+                        val file = subtitleFile(saved)
+                        currentCoroutineContext().ensureActive()
+                        if (player === currentPlayer) attachSubtitle(saved, file, currentPlayer)
+                        return@launch
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) { /* Refresh the exact subtitle's URL below. */ }
+                }
+                val context = subtitleContext ?: site.subtitleContext(target) ?: return@launch
+                val found = runInterruptible(Dispatchers.IO) { subtitleClient.search(context, listOf(onlineLanguage)) }
+                // Searches are episode-scoped; never carry a subtitle file across episodes.
+                val candidates = if (saved != null) found.subtitles.filter { it.id == saved.id }
+                    else found.subtitles.take(3)
+                for (candidate in candidates) {
+                    try {
+                        val file = subtitleFile(candidate)
+                        currentCoroutineContext().ensureActive()
+                        if (player === currentPlayer) attachSubtitle(candidate, file, currentPlayer)
+                        return@launch
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) { /* Try the next release in the same language. */ }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // Subtitle availability must not interrupt playback or open a dialog.
+                // Keep the intended choice in the bookmark so another resume can retry.
+            }
+        }
+    }
+
+    private suspend fun subtitleFile(subtitle: OnlineSubtitle): File = runInterruptible(Dispatchers.IO) {
+        require(subtitle.id.matches(Regex("[0-9]+")))
+        val cached = listOf("vtt", "srt").map { File(cacheDir, "subtitle-${subtitle.id}.$it") }
+            .firstOrNull { it.isFile && it.length() > 0 }
+        cached ?: run {
+            val document = subtitleClient.download(subtitle)
+            val file = File(cacheDir, "subtitle-${subtitle.id}.${if (document.isWebVtt) "vtt" else "srt"}")
+            val temporary = File.createTempFile("subtitle-", ".tmp", cacheDir)
+            try {
+                temporary.writeText(document.text, Charsets.UTF_8)
+                check(temporary.renameTo(file)) { "Could not cache subtitles" }
+                file
+            } finally { temporary.delete() }
+        }
+    }
+
     private fun subtitleDialog(currentPlayer: ExoPlayer, result: SubtitleSearch?, message: String? = null): Dialog {
         val textTracks = buildList {
             currentPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.forEach { group ->
@@ -896,7 +1017,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        val online = result?.subtitles.orEmpty()
+        val online = (listOfNotNull(onlineSubtitle) + result?.subtitles.orEmpty()).distinctBy { it.id }
         val labels = listOf("Off") + textTracks.map { (group, index) ->
             val format = group.getTrackFormat(index)
             format.label ?: format.language?.let { Locale.forLanguageTag(it).displayLanguage } ?: "Subtitle"
@@ -929,11 +1050,13 @@ class MainActivity : ComponentActivity() {
                 val parameters = currentPlayer.trackSelectionParameters.buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, index == 0)
                     .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                if (index > 0) {
+                selectedSubtitle = if (index == 0) SubtitleSelection.Off else {
                     val (group, trackIndex) = textTracks[index - 1]
                     parameters.setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, listOf(trackIndex)))
+                    embeddedSubtitle(group, trackIndex)
                 }
                 currentPlayer.trackSelectionParameters = parameters.build()
+                savePlaybackProgress()
                 selectedDialog.dismiss()
             }
         }.create()
@@ -952,31 +1075,9 @@ class MainActivity : ComponentActivity() {
         showOptionsDialog(dialog)
         subtitleJob = lifecycleScope.launch {
             try {
-                val file = runInterruptible(Dispatchers.IO) {
-                    val document = subtitleClient.download(subtitle)
-                    File(cacheDir, "subtitle-${subtitle.id}.${if (document.isWebVtt) "vtt" else "srt"}").apply {
-                        writeText(document.text, Charsets.UTF_8)
-                    }
-                }
+                val file = subtitleFile(subtitle)
                 if (player !== currentPlayer || optionsDialog !== dialog || !dialog.isShowing) return@launch
-                val config = MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(file))
-                    .setId("online:${subtitle.id}").setLanguage(subtitle.language.code)
-                    .setLabel(subtitle.release)
-                    .setMimeType(if (file.extension == "vtt") MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP)
-                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
-                val item = currentPlayer.currentMediaItem?.buildUpon()
-                    ?.setSubtitleConfigurations(listOf(config))?.build() ?: return@launch
-                onlineSubtitle = subtitle
-                pendingSubtitle = subtitle
-                currentPlayer.trackSelectionParameters = currentPlayer.trackSelectionParameters.buildUpon()
-                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                    .setPreferredTextLanguage(subtitle.language.code).build()
-                val position = currentPlayer.currentPosition
-                val playing = currentPlayer.playWhenReady
-                currentPlayer.setMediaItem(item, position)
-                currentPlayer.prepare()
-                currentPlayer.playWhenReady = playing
+                attachSubtitle(subtitle, file, currentPlayer)
                 dialog.dismiss()
             } catch (error: CancellationException) {
                 throw error
@@ -986,6 +1087,29 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun attachSubtitle(subtitle: OnlineSubtitle, file: File, currentPlayer: ExoPlayer) {
+        val config = MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(file))
+            .setId("online:${subtitle.id}").setLanguage(subtitle.language.code)
+            .setLabel(subtitle.release)
+            .setMimeType(if (file.extension == "vtt") MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP)
+            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
+        val item = currentPlayer.currentMediaItem?.buildUpon()
+            ?.setSubtitleConfigurations(listOf(config))?.build() ?: return
+        selectedSubtitle = SubtitleSelection.Online(subtitle)
+        savePlaybackProgress()
+        onlineSubtitle = subtitle
+        pendingSubtitle = subtitle
+        currentPlayer.trackSelectionParameters = currentPlayer.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setPreferredTextLanguage(subtitle.language.code).build()
+        val position = currentPlayer.currentPosition
+        val playing = currentPlayer.playWhenReady
+        currentPlayer.setMediaItem(item, position)
+        currentPlayer.prepare()
+        currentPlayer.playWhenReady = playing
     }
 
     private fun showQualityOptions() {
@@ -1069,6 +1193,8 @@ class MainActivity : ComponentActivity() {
         subtitleContext = null
         onlineSubtitle = null
         pendingSubtitle = null
+        selectedSubtitle = null
+        subtitleToRestore = null
         playerView.player = null
         player?.release()
         player = null
@@ -1081,7 +1207,7 @@ class MainActivity : ComponentActivity() {
         if (!playbackReady) return
         playbackProgress.save(movie, target, currentEpisodeName, currentArtwork,
             currentPlayer.currentPosition, currentPlayer.duration,
-            currentPlayer.playbackState == Player.STATE_ENDED)
+            currentPlayer.playbackState == Player.STATE_ENDED, currentSubtitleSelection())
     }
 
     @Deprecated("Android TV uses the physical Back button")

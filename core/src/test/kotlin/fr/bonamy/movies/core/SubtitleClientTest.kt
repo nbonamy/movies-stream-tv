@@ -66,6 +66,26 @@ class SubtitleClientTest {
     }
 
     @Test
+    fun bingingCarriesLanguageWithoutReusingPreviousFileAndSearchesOnlyTheNewEpisode() {
+        MockWebServer().use { server ->
+            val previous = SubtitleSelection.Online(OnlineSubtitle("old", SubtitleLanguage.FRENCH,
+                "Previous episode.srt", server.url("/old").toString(), "UTF-8", 1000))
+            val carried = previous.nextEpisode()
+            assertEquals(SubtitleSelection.Language("fr"), carried)
+            server.enqueue(MockResponse().setBody("[${entry(server, "5", "fre", "50")},${entry(server, "6", "eng", "500")} ]"))
+            val language = SubtitleLanguage.entries.single { it.code == (carried as SubtitleSelection.Language).code }
+            val result = SubtitleClient(searchOrigin = server.url("/")).search(SubtitleContext("tt123456", 3, 1), listOf(language))
+            assertEquals(listOf("5"), result.subtitles.map { it.id })
+            assertEquals(1, server.requestCount)
+            assertEquals("/search/episode-1/imdbid-123456/season-3/sublanguageid-fre", server.takeRequest().path)
+        }
+        assertEquals(SubtitleSelection.Off, SubtitleSelection.Off.nextEpisode())
+        assertEquals(SubtitleSelection.Language("en"), SubtitleSelection.Embedded("eng", "old-id", "English", 0).nextEpisode())
+        assertEquals(SubtitleSelection.Language("fr"), SubtitleSelection.Embedded("fra-FR", null, null, 0).nextEpisode())
+        assertNull(SubtitleSelection.Embedded("und", "old-id", "Unknown", 0).nextEpisode())
+    }
+
+    @Test
     fun rejectsNonSubtitleDownloadsGzipBombsAndUntrustedRedirects() {
         MockWebServer().use { server ->
             val client = SubtitleClient(searchOrigin = server.url("/"))

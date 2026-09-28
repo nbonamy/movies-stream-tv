@@ -37,11 +37,11 @@ class SubtitleClient(
 ) {
     private val network = HttpTransport(http, searchOrigin.host in listOf("localhost", "127.0.0.1"))
 
-    fun search(context: SubtitleContext): SubtitleSearch {
+    fun search(context: SubtitleContext, languages: List<SubtitleLanguage> = SubtitleLanguage.entries): SubtitleSearch {
         val imdb = context.imdbId.removePrefix("tt")
         if (!imdb.matches(Regex("[0-9]+"))) throw IOException("No IMDb reference for this movie")
         val failed = mutableListOf<SubtitleLanguage>()
-        val subtitles = SubtitleLanguage.entries.flatMap { language ->
+        val subtitles = languages.distinct().flatMap { language ->
             try {
                 val episodePath = if (context.episode != null) "episode-${context.episode}/" else ""
                 val seasonPath = if (context.episode != null) "season-${context.season}/" else ""
