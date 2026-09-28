@@ -5,6 +5,7 @@ A native Android TV browser for Vidbox movies and TV shows, with popular catalog
 ## Remote
 
 - Use the **hamburger menu** to switch between **Movies** and **TV Shows**. Search stays within that mode.
+- Open **Search** and scan the QR code to search from your phone. Use the same network and keep Movies Stream open on the TV. The phone mini site sends your query to the current **Movies** or **TV Shows** mode; results appear on the TV. The address beside the QR code also works in a browser.
 - Keep navigating **Down** to load more titles automatically; there are no page buttons.
 - **Continue watching** appears above the popular catalog in each mode, with separate movie and TV episode lists. Select a card to resume directly; reopening a title from its details or episode list also restores its position.
 - Select a movie poster, then **Watch**. For TV shows, select **Episodes**, choose a season, then an episode thumbnail.
