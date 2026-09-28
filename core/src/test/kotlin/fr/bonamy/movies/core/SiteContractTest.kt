@@ -13,25 +13,25 @@ class SiteContractTest {
         val two = TestSite("two", listOf(MediaType.MOVIE, MediaType.TV))
         val three = TestSite("three", listOf(MediaType.MOVIE))
         val registry = SiteRegistry(listOf(one, two, three))
-        assertEquals(listOf(BrowseMenuItem.Mode(MediaType.MOVIE), BrowseMenuItem.Mode(MediaType.TV),
+        assertEquals(listOf(BrowseMenuItem.Section(SiteSection("movie", "Movies", MediaType.MOVIE)), BrowseMenuItem.Section(SiteSection("tv", "TV Shows", MediaType.TV)),
             BrowseMenuItem.Divider, BrowseMenuItem.Site(one.descriptor), BrowseMenuItem.Site(three.descriptor)), registry.menu(two))
-        assertEquals(listOf(BrowseMenuItem.Mode(MediaType.MOVIE), BrowseMenuItem.Divider,
+        assertEquals(listOf(BrowseMenuItem.Section(SiteSection("movie", "Movies", MediaType.MOVIE)), BrowseMenuItem.Divider,
             BrowseMenuItem.Site(one.descriptor), BrowseMenuItem.Site(two.descriptor)), registry.menu(three))
-        assertEquals(listOf(BrowseMenuItem.Mode(MediaType.MOVIE)), SiteRegistry(listOf(three)).menu(three))
+        assertEquals(listOf(BrowseMenuItem.Section(SiteSection("movie", "Movies", MediaType.MOVIE))), SiteRegistry(listOf(three)).menu(three))
     }
 
     @Test fun searchesAndPaginatesOnlyTheCurrentSiteAndQueryDespiteLateResponses() = runBlocking {
         val oldResponse = CompletableDeferred<CatalogPage>()
         val old = TestSite("one") { _, _ -> oldResponse.await() }
         val requests = mutableListOf<Pair<CatalogRequest, PageToken?>>()
-        val query = CatalogRequest(MediaType.MOVIE, "new search")
+        val query = CatalogRequest("movie", "new search")
         val token = PageToken("two", query, "opaque/next?cursor=abc")
         val second = TestSite("two") { request, after ->
             requests += request to after
             if (after == null) CatalogPage(listOf(title("two", "same/slug")), token)
             else CatalogPage(listOf(title("two", "same/slug"), title("two", "other/slug")), null)
         }
-        val browser = CatalogBrowser(old, CatalogRequest(MediaType.MOVIE, "old search"))
+        val browser = CatalogBrowser(old, CatalogRequest("movie", "old search"))
         val pending = async(start = CoroutineStart.UNDISPATCHED) { browser.loadNext() }
         browser.invalidate() // Edit/switch while the old HTTP request is still in flight.
         browser.reset(second, query)
@@ -46,10 +46,28 @@ class SiteContractTest {
         assertNull(browser.loadNext())
     }
 
+    @Test fun arbitrarySectionsOfTheSameMediaTypeOwnTheirLabelsAndRejectCrossSectionResults() = runBlocking<Unit> {
+        val site = object : StreamingSite by TestSite("custom") {
+            override val descriptor = SiteDescriptor("custom", "Custom", listOf(
+                SiteSection("films", "À l'affiche", MediaType.MOVIE),
+                SiteSection("stage", "Spectacles", MediaType.MOVIE),
+                SiteSection("classics", "Les classiques", MediaType.MOVIE)))
+            override suspend fun browse(request: CatalogRequest, after: PageToken?) =
+                CatalogPage(listOf(title("custom", "42").copy(sectionId = "films")), null)
+        }
+        val menu = SiteRegistry(listOf(site)).menu(site)
+        assertEquals(listOf("À l'affiche", "Spectacles", "Les classiques"),
+            menu.map { (it as BrowseMenuItem.Section).section.title })
+        val browser = CatalogBrowser(site, CatalogRequest("stage"))
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { browser.loadNext() } }
+        browser.reset(site, CatalogRequest("films"))
+        assertEquals("42", browser.loadNext()!!.single().id)
+    }
+
     @Test fun anEditInvalidatesResultsBeforeTheNextDebouncedSearchStarts() = runBlocking {
         val response = CompletableDeferred<CatalogPage>()
         val site = TestSite("one") { _, _ -> response.await() }
-        val browser = CatalogBrowser(site, CatalogRequest(MediaType.MOVIE, "first"))
+        val browser = CatalogBrowser(site, CatalogRequest("movie", "first"))
         val pending = async(start = CoroutineStart.UNDISPATCHED) { browser.loadNext() }
         browser.invalidate()
         response.complete(CatalogPage(listOf(title("one", "stale")), null))
@@ -61,7 +79,7 @@ class SiteContractTest {
 
     private class TestSite(id: String, types: List<MediaType> = listOf(MediaType.MOVIE),
         val load: suspend (CatalogRequest, PageToken?) -> CatalogPage = { _, _ -> error("Unexpected browse") }) : StreamingSite {
-        override val descriptor = SiteDescriptor(id, id, types)
+        override val descriptor = SiteDescriptor(id, id, types.map { SiteSection(it.apiValue, it.label, it) })
         override val series = if (MediaType.TV in types) object : SeriesCatalog {
             override suspend fun seasons(show: TitleRef): List<Season> = error("Unexpected seasons")
             override suspend fun episodes(season: SeasonRef): List<Episode> = error("Unexpected episodes")

@@ -14,7 +14,8 @@ class VidboxSite internal constructor(
     private val metadataOrigin: HttpUrl = "https://data.vidsrc.sh/".toHttpUrl(),
 ) : StreamingSite {
     constructor() : this(VidboxClient())
-    override val descriptor = SiteDescriptor(ID, "Vidbox", listOf(MediaType.MOVIE, MediaType.TV))
+    override val descriptor = SiteDescriptor(ID, "Vidbox", listOf(
+        SiteSection("movie", "Movies", MediaType.MOVIE), SiteSection("tv", "TV Shows", MediaType.TV)))
     override val series = object : SeriesCatalog {
         override suspend fun seasons(show: TitleRef): List<Season> = runInterruptible(Dispatchers.IO) {
             requireOwned(show)
@@ -29,10 +30,10 @@ class VidboxSite internal constructor(
     }
 
     override suspend fun browse(request: CatalogRequest, after: PageToken?): CatalogPage = runInterruptible(Dispatchers.IO) {
-        require(request.type in descriptor.mediaTypes)
+        val section = descriptor.section(request.sectionId)
         require(after == null || (after.siteId == ID && after.request == request)) { "Page belongs to another catalog" }
         val page = after?.value?.toInt() ?: 1
-        val result = client.browse(request.type, page, request.query)
+        val result = client.browse(section.mediaType, page, request.query)
         CatalogPage(result.items, if (result.page < result.totalPages)
             PageToken(ID, request, (result.page + 1).toString()) else null)
     }

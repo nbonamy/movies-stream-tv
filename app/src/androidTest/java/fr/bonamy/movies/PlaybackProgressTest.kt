@@ -16,7 +16,7 @@ class PlaybackProgressTest {
     private val preferences = InstrumentationRegistry.getInstrumentation().targetContext
         .getSharedPreferences("progress-test", Context.MODE_PRIVATE)
     private val movie = Title("55", "Title", "poster", "backdrop", "8", "Overview", "2026", siteId = "site-one")
-    private val show = movie.copy(type = MediaType.TV)
+    private val show = movie.copy(type = MediaType.TV, sectionId = "tv")
 
     @Before fun clearBefore() { preferences.edit().clear().commit() }
     @After fun clearAfter() { preferences.edit().clear().commit() }
@@ -35,12 +35,12 @@ class PlaybackProgressTest {
         assertEquals(240_000L, reopened.position(first))
         assertEquals(360_000L, reopened.position(second))
         assertEquals(0L, reopened.position(PlayableRef(show.ref, "season-two/third", 2, 3)))
-        assertEquals(listOf(movie), reopened.list(movie.siteId, MediaType.MOVIE).map { it.movie })
-        val episode = reopened.list(movie.siteId, MediaType.TV).single { it.target == second }
+        assertEquals(listOf(movie), reopened.list(movie.siteId, "movie").map { it.movie })
+        val episode = reopened.list(movie.siteId, "tv").single { it.target == second }
         assertEquals("Second episode", episode.episodeName)
         assertEquals("still-2", episode.artwork)
         assertEquals(900_000L, episode.duration)
-        assertEquals(setOf(first, second), reopened.list(movie.siteId, MediaType.TV).map { it.target }.toSet())
+        assertEquals(setOf(first, second), reopened.list(movie.siteId, "tv").map { it.target }.toSet())
     }
 
     @Test fun retainsProgressOnFailedLoadsAndRemovesUnstartedOrCompletedItems() {
@@ -53,18 +53,18 @@ class PlaybackProgressTest {
         save(-1)
         assertEquals(120_000L, store.position(target))
         save(30_000)
-        assertTrue(store.list(movie.siteId, MediaType.MOVIE).isEmpty())
+        assertTrue(store.list(movie.siteId, "movie").isEmpty())
         save(950_000)
         assertEquals(950_000L, store.position(target))
         save(950_001)
-        assertTrue(store.list(movie.siteId, MediaType.MOVIE).isEmpty())
+        assertTrue(store.list(movie.siteId, "movie").isEmpty())
         save(120_000)
         save(120_000, ended = true)
         assertEquals(0L, store.position(target))
         // One malformed entry must not prevent loading the rest of the home row.
         preferences.edit().putString("broken", "{").apply()
         save(180_000)
-        assertEquals(listOf(target), store.list(movie.siteId, MediaType.MOVIE).map { it.target })
+        assertEquals(listOf(target), store.list(movie.siteId, "movie").map { it.target })
     }
     @Test fun keepsIdenticalIdsSeparateAcrossSitesAndMigratesLegacyVidboxOnce() {
         val legacy = JSONObject().put("id", "55").put("type", "TV").put("title", "Legacy show")
@@ -74,7 +74,7 @@ class PlaybackProgressTest {
         val store = PlaybackProgress(preferences)
         val migrated = PlayableRef(TitleRef("vidbox", "55", MediaType.TV), "2/3", 2, 3)
         assertEquals(123_000L, store.position(migrated))
-        assertEquals(42L, store.list("vidbox", MediaType.TV).single().updatedAt)
+        assertEquals(42L, store.list("vidbox", "tv").single().updatedAt)
         assertFalse(preferences.contains("tv/55/2/3"))
         assertEquals("vidpro", SitePreferences(preferences).source("vidbox"))
         assertNull(SitePreferences(preferences).source(movie.siteId))
@@ -86,13 +86,34 @@ class PlaybackProgressTest {
         val reopened = PlaybackProgress(preferences)
         assertEquals(180_000L, reopened.position(PlayableRef(a.ref)))
         assertEquals(360_000L, reopened.position(PlayableRef(b.ref)))
-        assertEquals(listOf(a), reopened.list(a.siteId, MediaType.MOVIE).map { it.movie })
-        assertEquals(listOf(b), reopened.list(b.siteId, MediaType.MOVIE).map { it.movie })
+        assertEquals(listOf(a), reopened.list(a.siteId, "movie").map { it.movie })
+        assertEquals(listOf(b), reopened.list(b.siteId, "movie").map { it.movie })
         assertEquals(123_000L, reopened.position(migrated))
         SitePreferences(preferences).selectSource(a.siteId, "server-a")
         SitePreferences(preferences).selectSource(b.siteId, "server-b")
         assertEquals("server-a", SitePreferences(preferences).source(a.siteId))
         assertEquals("server-b", SitePreferences(preferences).source(b.siteId))
+    }
+
+    @Test fun sectionsWithTheSameMediaTypeKeepSelectionAndContinueWatchingSeparate() {
+        val films = fr.bonamy.movies.core.SiteSection("films", "À l'affiche", MediaType.MOVIE)
+        val stage = fr.bonamy.movies.core.SiteSection("stage", "Spectacles", MediaType.MOVIE)
+        val site = fr.bonamy.movies.core.SiteDescriptor("custom", "Custom", listOf(films, stage))
+        val settings = SitePreferences(preferences)
+        settings.selectSection(site, stage)
+        assertEquals(stage, SitePreferences(preferences).section(site))
+        assertEquals(films, settings.section(site.copy(sections = listOf(films))))
+        val store = PlaybackProgress(preferences)
+        val film = movie.copy(siteId = site.id, sectionId = films.id)
+        val show = film.copy(id = "stage-show", sectionId = stage.id)
+        store.save(film, PlayableRef(film.ref), null, "", 120_000, 900_000)
+        store.save(show, PlayableRef(show.ref), null, "", 180_000, 900_000)
+        val reopened = PlaybackProgress(preferences)
+        assertEquals(listOf(film), reopened.list(site.id, films.id).map { it.movie })
+        assertEquals(listOf(show), reopened.list(site.id, stage.id).map { it.movie })
+        preferences.edit().putString(SitePreferences.key("mode", "vidbox"), "TV").commit()
+        val vidbox = fr.bonamy.movies.core.sites.vidbox.VidboxSite().descriptor
+        assertEquals("tv", settings.section(vidbox).id)
     }
 
 }

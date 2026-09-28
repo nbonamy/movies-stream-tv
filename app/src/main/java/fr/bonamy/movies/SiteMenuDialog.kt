@@ -8,11 +8,11 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import fr.bonamy.movies.core.BrowseMenuItem
-import fr.bonamy.movies.core.MediaType
+import fr.bonamy.movies.core.SiteSection
 
 /** MediaStation action rows, with a real, nonfocusable separator between modes and sites. */
 internal object SiteMenuDialog {
-    fun create(context: Context, items: List<BrowseMenuItem>, selected: MediaType,
+    fun create(context: Context, items: List<BrowseMenuItem>, selected: SiteSection,
         choose: (BrowseMenuItem) -> Unit): Dialog {
         val panel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         var initial: View? = null
@@ -26,11 +26,11 @@ internal object SiteMenuDialog {
                 val row = LayoutInflater.from(context).inflate(R.layout.item_tv_dialog_action, panel, false) as TextView
                 row.id = View.generateViewId()
                 row.text = when (item) {
-                    is BrowseMenuItem.Mode -> item.type.label
+                    is BrowseMenuItem.Section -> item.section.title
                     is BrowseMenuItem.Site -> item.descriptor.name
                     BrowseMenuItem.Divider -> error("Divider is not an action")
                 }
-                row.isSelected = item is BrowseMenuItem.Mode && item.type == selected
+                row.isSelected = item is BrowseMenuItem.Section && item.section == selected
                 if (row.isSelected) initial = row
                 row.setOnClickListener { choose(item) }
                 panel.addView(row, (row.layoutParams as LinearLayout.LayoutParams).apply { bottomMargin = spacing })

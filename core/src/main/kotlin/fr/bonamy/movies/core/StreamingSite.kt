@@ -1,7 +1,13 @@
 package fr.bonamy.movies.core
 
-data class SiteDescriptor(val id: String, val name: String, val mediaTypes: List<MediaType>) {
-    init { require(id.isNotBlank() && mediaTypes.isNotEmpty() && mediaTypes.distinct() == mediaTypes) }
+/** Sections are site-owned navigation; media type describes how their titles play. */
+data class SiteSection(val id: String, val title: String, val mediaType: MediaType) {
+    init { require(id.isNotBlank() && title.isNotBlank()) }
+}
+
+data class SiteDescriptor(val id: String, val name: String, val sections: List<SiteSection>) {
+    init { require(id.isNotBlank() && sections.isNotEmpty() && sections.map { it.id }.distinct().size == sections.size) }
+    fun section(id: String): SiteSection = sections.first { it.id == id }
 }
 
 data class PlaybackOptions(val sources: List<PlaybackSource>, val defaultSourceId: String) {
@@ -33,7 +39,7 @@ internal fun interface StreamExtractor<in Request> {
 }
 
 sealed interface BrowseMenuItem {
-    data class Mode(val type: MediaType) : BrowseMenuItem
+    data class Section(val section: SiteSection) : BrowseMenuItem
     data object Divider : BrowseMenuItem
     data class Site(val descriptor: SiteDescriptor) : BrowseMenuItem
 }
@@ -41,12 +47,12 @@ sealed interface BrowseMenuItem {
 class SiteRegistry(val sites: List<StreamingSite>) {
     init {
         require(sites.isNotEmpty() && sites.map { it.descriptor.id }.distinct().size == sites.size)
-        require(sites.all { (MediaType.TV in it.descriptor.mediaTypes) == (it.series != null) })
+        require(sites.all { it.descriptor.sections.any { section -> section.mediaType == MediaType.TV } == (it.series != null) })
     }
     fun get(id: String): StreamingSite = sites.first { it.descriptor.id == id }
     fun initial(id: String?): StreamingSite = sites.firstOrNull { it.descriptor.id == id } ?: sites.first()
     fun menu(site: StreamingSite): List<BrowseMenuItem> = buildList {
-        addAll(site.descriptor.mediaTypes.map(BrowseMenuItem::Mode))
+        addAll(site.descriptor.sections.map(BrowseMenuItem::Section))
         val others = sites.filter { it.descriptor.id != site.descriptor.id }
         if (others.isNotEmpty()) {
             add(BrowseMenuItem.Divider)
