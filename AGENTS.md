@@ -92,8 +92,10 @@ intended target. Report what was actually installed and tested.
 
 ## Documentation and publication
 
-Keep README product-oriented: real screenshots, viewing workflows, supported
-sites and a short getting-started path. Put implementation details in `docs/`.
+Keep README factual and product-oriented: a short description, features, real
+screenshots, supported sites, usage and setup. Use ordinary project-documentation
+headings and direct descriptions; omit slogans and promotional calls to action.
+Put detailed implementation guidance in `docs/`.
 Capture screenshots from the actual app; exclude personal history, addresses,
 QR URLs, account details and debug overlays.
 

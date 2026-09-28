@@ -1,108 +1,88 @@
-<p align="center">
-  <img src="branding/movies-banner.svg" alt="Movies Stream" width="300">
-</p>
+# Movies Stream
 
-<h1 align="center">Settle in. Press play.</h1>
+Native Android TV app for browsing and watching movies, TV shows and spectacles
+from Vidbox, Kopoti and 123Movies.
 
-<p align="center">
-  Movies, series and spectacles in one app, built for your Android TV.<br>
-  Browse with your remote. Search with your phone. Pick up where you left off.
-</p>
+## Features
 
-<p align="center">
-  <a href="#a-good-night-starts-with-a-good-browse">Explore</a> ·
-  <a href="#three-sites-one-familiar-experience">Supported sites</a> ·
-  <a href="#get-movies-stream">Get started</a>
-</p>
+- **Catalog browsing** — poster galleries, title details, ratings and infinite scrolling.
+- **Search** — search on the TV, or scan a QR code and type from a phone on the same network.
+- **TV shows** — season selection and episode browsing with thumbnails where available.
+- **Resume playback** — Continue Watching lists for movies and TV shows, with progress saved separately for each site.
+- **Automatic next episode** — continues into the next season when available; the player closes at the end of a movie or the final listed episode.
+- **Subtitles** — available stream tracks, hosted subtitles and online French/English search where supported. Remembers the selected track and carries its language into the next episode.
+- **Quality and source selection** — starts at the highest supported bitrate and allows switching available resolutions or servers while retaining playback position.
+- **Remote navigation** — D-pad focus, physical Back navigation and native fullscreen playback without a WebView or provider pop-ups.
 
-![Reacher's detail screen, with full-screen artwork, synopsis and an Episodes action](docs/screenshots/title-details.png)
+## Screenshots
 
-## A good night starts with a good browse
-
-Explore movies and TV shows in a poster gallery made for the big screen. Keep
-moving down to discover more, open a title for its story and rating, then choose
-**Watch** or **Episodes**. Large text and clear focus make every step easy to
-follow from the couch.
-
-![TV catalog with poster artwork and a clearly focused card](docs/screenshots/catalog.png)
-
-### Type on your phone. Watch on your TV.
-
-Open Search, scan the QR code and use your phone's keyboard. Results appear on
-the TV, ready to browse with the remote. Your phone and TV just need to be on the
-same network. You can also enter a query directly on the TV.
-
-## Tonight's episode. Tomorrow's too.
-
-Choose a season, pick an episode and let the series continue. The next episode
-starts automatically—even across seasons when available. Your subtitle language
-follows you into the next episode.
-
-![Reacher season two with individual episode thumbnails and titles](docs/screenshots/episodes.png)
-
-**Taking a break?** Continue Watching brings unfinished movies and episodes back
-to the home screen. Playback position and your subtitle choice are remembered,
-including after restarting the app. Each site keeps its own history, with movies
-and TV shows in their respective sections.
-
-## Everything you need, within reach
-
-Full-screen playback keeps the focus on what you're watching. Press **Up** for
-**Subtitles**, **Quality** and **Source**, or use the remote to pause and seek.
-
-- **Subtitles your way.** Choose available tracks or search online in French and
-  English where supported. Your selection—including Off—is remembered.
-- **The best available quality.** Playback starts with the highest supported
-  bitrate offered by the selected stream. Choose another resolution or Auto
-  without losing your place.
-- **Switch sources.** Pick another supported server while keeping your playback
-  position. The app remembers your choice for each site.
-- **Back behaves like Back.** Dismiss a menu, hide the controls, then return to
-  browsing with the physical remote button.
-
-![Full-screen movie playback with subtitle, quality and source controls above the timeline](docs/screenshots/player.png)
-
-When a movie ends, you return to browsing. When a series ends, the player closes
-after the final listed episode.
-
-## Three sites, one familiar experience
-
-Switch sites and sections from the hamburger menu. The browsing and playback
-controls stay familiar wherever you watch.
-
-| Site | What you'll find |
+| Catalog | Title details |
 | --- | --- |
-| **Vidbox** | Movies and TV shows, seasons and episodes, multiple supported sources |
-| **Kopoti** | Films in **À l'affiche** and **Spectacles**, with search across its catalog |
-| **123Movies** | Movies and TV shows, seasons and episodes, and available hosted subtitles |
+| ![TV show catalog](docs/screenshots/catalog.png) | ![Reacher title details](docs/screenshots/title-details.png) |
+| **Episodes** | **Player** |
+| ![Reacher season two episodes](docs/screenshots/episodes.png) | ![Fullscreen player and playback controls](docs/screenshots/player.png) |
 
-123Movies currently supports **Server 1**. Catalogs, working sources, quality and
-subtitle availability depend on the selected site and title. Movies Stream is a
-player for these sites; it does not host their video catalogs.
+Screenshots are from the Android TV app. Artwork and metadata come from the selected sites.
 
-## Get Movies Stream
+## Supported sites
 
-You'll need **Android TV 8.0 or later**, an internet connection, and a computer to
-build and sideload the app. The current installation path is a debug APK built
-from source.
+| Site | Sections | Playback support |
+| --- | --- | --- |
+| Vidbox | Movies, TV Shows | Multiple supported sources |
+| Kopoti | À l'affiche, Spectacles | ShareCloudy |
+| 123Movies | Movies, TV Shows | Server 1 |
 
-1. Set up JDK 17, the Android SDK and ADB using the [build guide](docs/development.md).
-2. Run `make build` and install the APK on your TV, or follow the guide's deploy commands.
-3. Open **Movies Stream**, choose a site and find your next watch.
+Use the hamburger menu to switch sites and sections. Each site remembers its
+selected source and keeps its own playback history. Catalogs, working sources,
+quality and subtitle availability depend on the site and title. The app does
+not host video content.
 
-**[Build and install →](docs/development.md)** · **[Remote and playback guide →](docs/user-guide.md)**
+## Usage
 
-<details>
-<summary><strong>Developing or adding a site?</strong></summary>
+Select a movie and choose **Watch**, or open **Episodes** for a TV show. Keep
+navigating down to load more titles. Unfinished items appear in **Continue Watching**.
 
-The app uses native Android views and Media3. Site adapters and stream extraction
-live behind shared interfaces, so new catalogs reuse the existing TV experience.
+During playback, press **Up** to focus **Subtitles**, then **Right** for **Quality**
+and **Source**. **Back** dismisses a picker, hides the controls, then exits the
+player. Playback progress and subtitle choices survive app restarts and updates.
 
-Start with [AGENTS.md](AGENTS.md), the [architecture guide](docs/multi-site-design.md)
-and [development commands](docs/development.md). Run `make check` for tests, lint
-and a debug build.
+See the [remote and playback guide](docs/user-guide.md) for details.
 
-</details>
+## Build and install
 
-<sub>Screenshots captured from the app on an Android TV emulator. Artwork and
-catalog metadata are supplied by the selected sites.</sub>
+Requires **Android TV 8.0 or later**. Building requires **JDK 17**, **Android SDK 36**
+and **ADB**.
+
+```sh
+make build
+```
+
+The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+Enable debugging on the TV and authorize the computer, then replace `TV_HOST:PORT`
+with its ADB endpoint:
+
+```sh
+make deploy ANDROID_TV_DEVICE=TV_HOST:PORT
+make run ANDROID_TV_DEVICE=TV_HOST:PORT
+```
+
+`deploy` builds and installs without launching; `run` restarts the app.
+For a running Android TV emulator, use `make deploy-emulator`.
+See [build and deployment](docs/development.md) for SDK configuration and local overrides.
+
+## Development
+
+- `app/` — native Android TV screens, Media3 playback and local playback history.
+- `core/` — site adapters, catalog/search models, stream extraction and subtitle discovery.
+- `docs/` — usage, architecture and site integration notes.
+
+```sh
+make check  # Tests, Android lint and debug build
+```
+
+Read [AGENTS.md](AGENTS.md) before changing the app or adding a site.
+The [multi-site architecture](docs/multi-site-design.md) describes the shared
+interfaces; [Kopoti](docs/kopoti.md) and [123Movies](docs/123movies.md) document
+individual integrations.
+
+The bundled Lato font is distributed under the [SIL Open Font License](licenses/Lato-OFL.txt).
