@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.Movies" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">@font/theme</item>
+        <item name="android:colorAccent">#3498DA</item>
+        <item name="android:windowBackground">#07111D</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+</resources>

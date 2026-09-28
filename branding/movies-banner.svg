@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180">
+  <rect width="320" height="180" fill="#2856C7"/>
+  <rect x="49" y="66" width="15" height="48" rx="7.5" fill="#F2B632"/>
+  <text x="80" y="107" fill="#FFF8E8" font-family="Lato, sans-serif" font-weight="700" font-size="42">Movies</text>
+</svg>

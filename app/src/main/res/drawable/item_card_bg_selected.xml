@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <size
+        android:width="@dimen/card_large_width"
+        android:height="@dimen/card_large_height" />
+    <stroke
+        android:color="@color/item_bg_selected"
+        android:width="@dimen/item_border_size" />
+    <solid android:color="@color/item_bg_border" />
+</shape>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:layout_width="@dimen/card_video_width"
+	android:layout_height="wrap_content"
+	android:layout_marginTop="@dimen/card_video_margin"
+	android:layout_marginBottom="@dimen/card_video_margin"
+	android:background="@drawable/browser_card_background"
+	android:stateListAnimator="@animator/browser_card_z"
+	android:orientation="vertical"
+	tools:ignore="RtlHardcoded">
+
+	<FrameLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:background="@color/item_bg_normal"
+		android:padding="@dimen/normal_card_thumb_padding">
+
+		<ImageView
+			android:id="@+id/thumbnail"
+			android:layout_width="@dimen/card_video_thumb_width"
+			android:layout_height="@dimen/card_video_thumb_height"
+			android:layout_gravity="center_horizontal"
+			tools:src="@drawable/item_video" />
+
+	</FrameLayout>
+
+	<View
+		android:id="@+id/separator"
+		android:layout_width="match_parent"
+		android:layout_height="1dp"
+		android:background="@color/item_bg_selected" />
+
+	<TextView
+		android:id="@+id/title"
+		style="@style/NormalCardItemTitle"
+		tools:text="Interstellar" />
+
+</LinearLayout>
