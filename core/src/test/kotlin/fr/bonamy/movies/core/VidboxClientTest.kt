@@ -1,5 +1,8 @@
 package fr.bonamy.movies.core
 
+import fr.bonamy.movies.core.sites.vidbox.*
+import fr.bonamy.movies.core.extractors.TmdbPlayback
+
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -31,9 +34,9 @@ class VidboxClientTest {
                 val result = VidboxClient(
                     catalogOrigin = catalog.url("/"),
                     playerOrigin = player.url("/"),
-                ).resolve(PlaybackTarget("27205"), VidboxClient.VIDPRO_SOURCE.id)
+                ).resolve(TmdbPlayback("27205"), VidboxClient.VIDPRO_SOURCE.id)
 
-                val playlist = result.playlistUrl.toHttpUrl()
+                val playlist = result.streamUrl.toHttpUrl()
                 assertEquals("playlist-token", playlist.queryParameter("token"))
                 assertEquals("2000000000", playlist.queryParameter("expires"))
                 assertEquals("1", playlist.queryParameter("h"))
@@ -47,7 +50,7 @@ class VidboxClientTest {
 
     @Test
     fun resolvesVidboxDefaultMaxSourceIntoTokenizedHlsPlayback() {
-        listOf(PlaybackTarget("1368337"), PlaybackTarget("108978", MediaType.TV, 2, 3)).forEach { target ->
+        listOf(TmdbPlayback("1368337"), TmdbPlayback("108978", MediaType.TV, 2, 3)).forEach { target ->
         MockWebServer().use { max ->
             val key = ByteArray(32) { (it * 7 + 3).toByte() }
             val nonce = ByteArray(12) { (it + 11).toByte() }
@@ -66,7 +69,7 @@ class VidboxClientTest {
 
             val result = VidboxClient(maxOrigin = max.url("/")).resolve(target)
 
-            assertEquals("stream-token", result.playlistUrl.toHttpUrl().queryParameter("token"))
+            assertEquals("stream-token", result.streamUrl.toHttpUrl().queryParameter("token"))
             val descriptor = max.takeRequest().requestUrl!!
             assertEquals(target.id, descriptor.queryParameter("id"))
             assertEquals(target.type.apiValue, descriptor.queryParameter("type"))
@@ -97,11 +100,11 @@ class VidboxClientTest {
             alternative.enqueue(MockResponse().setBody("#EXTM3U\n#EXT-X-VERSION:7"))
 
             val client = VidboxClient(alternativeOrigin = alternative.url("/"))
-            val available = client.sources(PlaybackTarget("27205"))
+            val available = client.sources(TmdbPlayback("27205"))
             val atlas = available.single { it.label == "VidRock • Atlas" }
-            val resolved = client.resolve(PlaybackTarget("27205"), atlas.id)
+            val resolved = client.resolve(TmdbPlayback("27205"), atlas.id)
 
-            assertEquals(playlist, resolved.playlistUrl)
+            assertEquals(playlist, resolved.streamUrl)
             assertEquals(alternative.url("/").toString().removeSuffix("/"), resolved.requestHeaders["Origin"])
             assertEquals("/api/movie/27205", alternative.takeRequest().path)
             assertEquals("/api/movie/27205", alternative.takeRequest().path)

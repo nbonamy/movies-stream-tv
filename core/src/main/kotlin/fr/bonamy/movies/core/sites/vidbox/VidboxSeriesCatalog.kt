@@ -1,16 +1,17 @@
-package fr.bonamy.movies.core
+package fr.bonamy.movies.core.sites.vidbox
+
+import fr.bonamy.movies.core.*
+import fr.bonamy.movies.core.extractors.*
 
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import java.io.IOException
 
 /** Reads Vidbox's serialized show data and the episode endpoint used by its public client. */
-internal class SeriesCatalog(private val http: OkHttpClient, private val origin: HttpUrl) {
+internal class VidboxSeriesCatalog(private val network: HttpTransport, private val origin: HttpUrl) {
     private var episodeApiKey: String? = null
     private val pages = mutableMapOf<String, String>()
 
@@ -33,7 +34,7 @@ internal class SeriesCatalog(private val http: OkHttpClient, private val origin:
             val number = season.get("season_number")?.asInt ?: return@mapNotNull null
             val count = season.get("episode_count")?.asInt ?: 0
             if (number < 0 || count <= 0) return@mapNotNull null
-            Season(number, season.text("name").ifBlank { if (number == 0) "Specials" else "Season $number" }, count)
+            Season(SeasonRef(TitleRef(VidboxSite.ID, id, MediaType.TV), number.toString(), number), season.text("name").ifBlank { if (number == 0) "Specials" else "Season $number" }, count)
         }.distinctBy { it.number }.sortedBy { it.number }
     }
 
@@ -49,7 +50,7 @@ internal class SeriesCatalog(private val http: OkHttpClient, private val origin:
             if (number <= 0 || item.get("season_number")?.asInt != season) return@mapNotNull null
             val still = item.text("still_path").takeIf { it.startsWith("/") }
                 ?.let { "https://image.tmdb.org/t/p/w500$it" }.orEmpty()
-            Episode(number, season, item.text("name").ifBlank { "Episode $number" }, item.text("overview"), still)
+            Episode(PlayableRef(TitleRef(VidboxSite.ID, id, MediaType.TV), "$season/$number", season, number), item.text("name").ifBlank { "Episode $number" }, item.text("overview"), still)
         }?.distinctBy { it.number }?.sortedBy { it.number }.orEmpty()
     }
 
@@ -75,23 +76,7 @@ internal class SeriesCatalog(private val http: OkHttpClient, private val origin:
         return null
     }
 
-    private fun get(url: HttpUrl): String {
-        val request = Request.Builder().url(url).header("User-Agent", VidboxClient.USER_AGENT)
-            .header("Referer", origin.toString()).build()
-        http.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Episode catalog returned HTTP ${response.code}")
-            val input = response.body?.byteStream() ?: throw IOException("Empty episode catalog")
-            val bytes = java.io.ByteArrayOutputStream()
-            val buffer = ByteArray(8192)
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                if (bytes.size() + count > 8 * 1024 * 1024) throw IOException("Episode catalog is too large")
-                bytes.write(buffer, 0, count)
-            }
-            return bytes.toByteArray().toString(Charsets.UTF_8)
-        }
-    }
+    private fun get(url: HttpUrl): String = network.text(url, referer = origin.toString())
 
     private fun JsonObject.text(name: String) = get(name)?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
 

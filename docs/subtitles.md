@@ -28,8 +28,10 @@ and one English result. A French download successfully decoded as SRT.
 
 - Online lookup is restricted to **French (`fre`) and English (`eng`)**, including
   filtering the returned rows. In-stream subtitle tracks remain available.
-- Max supplies its already-fetched IMDb metadata. Other sources use the same
-  movie metadata API on demand when opening Subtitles.
+- Site adapters supply normalized IMDb/episode metadata to shared subtitle lookup.
+  Max returns its already-fetched metadata; Vidbox owns the lazy metadata fallback
+  for its other sources. A new site may supply its own metadata or leave online
+  lookup unavailable. Site-local IDs are never treated as universal IMDb/TMDB IDs.
 - Results are grouped French then English and ordered by download count within
   each language. Release filenames are displayed for manual synchronization
   choice. The app does not reproduce Max's automatic filename ranking or enable

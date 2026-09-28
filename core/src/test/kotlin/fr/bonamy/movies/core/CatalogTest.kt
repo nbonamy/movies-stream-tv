@@ -1,28 +1,49 @@
 package fr.bonamy.movies.core
 
+import fr.bonamy.movies.core.sites.vidbox.*
+import fr.bonamy.movies.core.extractors.TmdbPlayback
+
 import com.google.gson.Gson
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.*
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 
 class CatalogTest {
     @Test
-    fun matchesPopularMovieAndTvPagesAndPreservesSearchAndPagination() {
+    fun vidboxSuppliesNormalizedEpisodeSubtitleMetadata() = runBlocking<Unit> {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("""{"data":{"imdb_id":"tt9288030"}}"""))
+            val site = VidboxSite(VidboxClient(), server.url("/"))
+            val item = PlayableRef(TitleRef(VidboxSite.ID, "108978", MediaType.TV), "2/3", 2, 3)
+            assertEquals(SubtitleContext("tt9288030", 2, 3), site.subtitleContext(item))
+            assertEquals("/api.php?type=tv&tmdb=108978&season=2&episode=3", server.takeRequest().path)
+            assertThrows(IllegalArgumentException::class.java) { runBlocking {
+                site.subtitleContext(item.copy(title = item.title.copy(siteId = "other")))
+            } }
+        }
+    }
+
+    @Test
+    fun matchesPopularMovieAndTvPagesAndPreservesSearchAndPagination() = runBlocking<Unit> {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setBody("""{"total_pages":750,"results":[{"id":1,"title":"A movie","poster_path":"/movie.jpg","release_date":"2025-01-01"}]}"""))
             server.enqueue(MockResponse().setBody("""{"total_pages":3,"results":[{"id":2,"name":"A show","poster_path":"/tv.jpg","first_air_date":"2024-02-01"}]}"""))
-            val client = VidboxClient(catalogOrigin = server.url("/"))
-            val movie = client.browse(MediaType.MOVIE)
-            val tv = client.browse(MediaType.TV, 2, "A show")
-            assertEquals(500, movie.totalPages)
+            val client = VidboxSite(VidboxClient(catalogOrigin = server.url("/")))
+            val movie = client.browse(CatalogRequest(MediaType.MOVIE))
+            val query = CatalogRequest(MediaType.TV, "A show")
+            val tv = client.browse(query, PageToken(VidboxSite.ID, query, "2"))
+            assertEquals("2", movie.next?.value)
             assertEquals("A movie", movie.items.single().title)
             assertEquals(MediaType.TV, tv.items.single().type)
             assertEquals("A show", tv.items.single().title)
             assertEquals("2024-02-01", tv.items.single().releaseDate)
-            assertEquals(2, tv.page)
-            assertEquals(3, tv.totalPages)
+            assertEquals("3", tv.next?.value)
+            assertThrows(IllegalArgumentException::class.java) { runBlocking {
+                client.browse(query, PageToken("another-site", query, "2"))
+            } }
             val first = server.takeRequest().requestUrl!!
             assertEquals("movie", first.queryParameter("type"))
             assertEquals("popularity", first.queryParameter("sort"))

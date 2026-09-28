@@ -6,8 +6,9 @@ filters (`all`). The former now-playing feed is no longer used.
 
 ## Native navigation
 
-- MediaStation's hamburger button opens its existing native single-choice dialog
-  for **Movies** and **TV Shows**. Search uses the selected mode.
+- MediaStation's hamburger button opens a native capability-based menu for
+  **Movies**, **TV Shows** and other registered sites. Search uses the selected
+  site and mode. See [multi-site architecture](multi-site-design.md).
 - Results append as D-pad focus approaches the bottom of the grid. Visible cards,
   focus, and scroll position survive each append. RecyclerView reuses off-screen
   cards in both catalogs and episode grids. Results are deduplicated by ID;
@@ -22,7 +23,7 @@ filters (`all`). The former now-playing feed is no longer used.
 ## Provider data and playback
 
 Vidbox serializes show details, including the season list, into Next.js data
-chunks. `SeriesCatalog` parses those JSON payloads as data. For episode details,
+chunks. `VidboxSeriesCatalog` parses those JSON payloads as data. For episode details,
 the site calls TMDB's season endpoint with its public client configuration. The
 app reads that configuration from the current same-site common bundle at runtime;
 it does not execute the bundle or embed a captured API key in source.
@@ -30,9 +31,10 @@ it does not execute the bundle or embed a captured API key in source.
 Only the chosen season is fetched, including specials when the site lists them.
 Nonconsecutive season/episode numbers remain intact. Empty seasons are omitted.
 
-`PlaybackTarget` carries media type, show ID, season, and episode through Max,
-Vidpro, VidRock alternatives, and French/English subtitle lookup. TV targets
-require a season and episode, preventing accidental movie or episode-1 fallback.
+`PlayableRef` carries site-qualified title and episode identity. Vidbox maps it
+to its internal `TmdbPlayback` for Max, Vidpro and VidRock extraction. That adapter
+requires season and episode numbers, preventing accidental movie or episode-1
+fallback. Online subtitle lookup receives normalized IMDb/episode metadata.
 Max TV uses `streamBase` plus the selected season, episode, and `stream_urls`;
 movie playback retains its direct `api` URL. Provider and stream availability
 still depend on the selected server.
