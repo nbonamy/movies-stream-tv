@@ -23,8 +23,8 @@ internal class PlaybackProgress(private val preferences: SharedPreferences) {
 
     fun position(target: PlayableRef): Long = read(target.key)?.position ?: 0
 
-    fun list(siteId: String, type: MediaType): List<PlaybackBookmark> = preferences.all.keys.mapNotNull(::read)
-        .filter { it.target.siteId == siteId && it.target.type == type }.sortedByDescending { it.updatedAt }
+    fun list(siteId: String, sectionId: String): List<PlaybackBookmark> = preferences.all.keys.mapNotNull(::read)
+        .filter { it.target.siteId == siteId && it.movie.sectionId == sectionId }.sortedByDescending { it.updatedAt }
 
     fun save(movie: Title, target: PlayableRef, episodeName: String?, artwork: String,
         position: Long, duration: Long, ended: Boolean = false) {
@@ -38,7 +38,7 @@ internal class PlaybackProgress(private val preferences: SharedPreferences) {
         }
         if (read(target.key)?.let { it.position == position && it.duration == duration } == true) return
         val data = JSONObject().put("siteId", target.siteId).put("episodeId", target.episodeId).put("id", movie.id).put("type", target.type.name)
-            .put("title", movie.title).put("poster", movie.poster).put("backdrop", movie.backdrop)
+            .put("sectionId", movie.sectionId).put("title", movie.title).put("poster", movie.poster).put("backdrop", movie.backdrop)
             .put("rating", movie.rating).put("overview", movie.overview).put("releaseDate", movie.releaseDate)
             .put("season", target.season).put("episode", target.episode).put("episodeName", episodeName)
             .put("artwork", artwork).put("position", position).put("duration", duration)
@@ -51,7 +51,7 @@ internal class PlaybackProgress(private val preferences: SharedPreferences) {
         val type = MediaType.valueOf(data.getString("type"))
         val movie = Title(data.getString("id"), data.getString("title"), data.optString("poster"),
             data.optString("backdrop"), data.optString("rating"), data.optString("overview"),
-            data.optString("releaseDate"), type, data.getString("siteId"))
+            data.optString("releaseDate"), type, data.getString("siteId"), data.optString("sectionId", type.apiValue))
         val target = PlayableRef(movie.ref, data.optString("episodeId").takeIf { it.isNotBlank() },
             if (data.has("season")) data.getInt("season") else null,
             if (data.has("episode")) data.getInt("episode") else null)

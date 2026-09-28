@@ -8,11 +8,11 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import fr.bonamy.movies.core.BrowseMenuItem
-import fr.bonamy.movies.core.MediaType
+import fr.bonamy.movies.core.SiteSection
 
-/** MediaStation action rows, with a real, nonfocusable separator between modes and sites. */
+/** MediaStation action rows, with a real, nonfocusable separator between sections and sites. */
 internal object SiteMenuDialog {
-    fun create(context: Context, items: List<BrowseMenuItem>, selected: MediaType,
+    fun create(context: Context, items: List<BrowseMenuItem>, selected: SiteSection, title: String = "Browse",
         choose: (BrowseMenuItem) -> Unit): Dialog {
         val panel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         var initial: View? = null
@@ -26,11 +26,11 @@ internal object SiteMenuDialog {
                 val row = LayoutInflater.from(context).inflate(R.layout.item_tv_dialog_action, panel, false) as TextView
                 row.id = View.generateViewId()
                 row.text = when (item) {
-                    is BrowseMenuItem.Mode -> item.type.label
+                    is BrowseMenuItem.Section -> item.section.title
                     is BrowseMenuItem.Site -> item.descriptor.name
                     BrowseMenuItem.Divider -> error("Divider is not an action")
                 }
-                row.isSelected = item is BrowseMenuItem.Mode && item.type == selected
+                row.isSelected = item is BrowseMenuItem.Section && item.section == selected
                 if (row.isSelected) initial = row
                 row.setOnClickListener { choose(item) }
                 panel.addView(row, (row.layoutParams as LinearLayout.LayoutParams).apply { bottomMargin = spacing })
@@ -45,8 +45,8 @@ internal object SiteMenuDialog {
             addView(panel)
             layoutParams = android.view.ViewGroup.LayoutParams(-1, -2)
         }
-        val dialog = DialogUtils.getDialogBuilder(context, "Browse").setView(scroll).create()
-        // Keep DialogUtils's show/animation handler; select the active mode after it runs.
+        val dialog = DialogUtils.getDialogBuilder(context, title).setView(scroll).create()
+        // Keep DialogUtils's show/animation handler; select the remembered section after it runs.
         scroll.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(view: View) {
                 view.post {

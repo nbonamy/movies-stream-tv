@@ -50,6 +50,7 @@ import androidx.media3.ui.PlayerView
 import fr.bonamy.movies.core.Title
 import fr.bonamy.movies.core.MediaType
 import fr.bonamy.movies.core.PlayableRef
+import fr.bonamy.movies.core.SearchScope
 import fr.bonamy.movies.core.StreamingSite
 import fr.bonamy.movies.core.CatalogRequest
 import fr.bonamy.movies.core.CatalogBrowser
@@ -132,8 +133,8 @@ class MainActivity : ComponentActivity() {
     private var currentEpisodeName: String? = null
     private var currentArtwork = ""
     private var returnToHome = false
-    private var catalogType = MediaType.MOVIE
-    private val catalogBrowser by lazy { CatalogBrowser(activeSite, CatalogRequest(catalogType)) }
+    private var catalogSection = sites.sites.first().descriptor.sections.first()
+    private val catalogBrowser by lazy { CatalogBrowser(activeSite, CatalogRequest(catalogSection.id)) }
     private var catalogQuery: String? = null
     private var catalogGeneration = 0
     private val catalogItems get() = catalogBrowser.items
@@ -162,7 +163,7 @@ class MainActivity : ComponentActivity() {
             it.background = getDrawable(R.drawable.browser_surface_background)
             setContentView(it)
         }
-        catalogType = sitePreferences.mode(activeSite.descriptor)
+        catalogSection = sitePreferences.section(activeSite.descriptor)
         buildGallery()
         buildDetail()
         episodeOverlay = FrameLayout(this).apply {
@@ -182,8 +183,8 @@ class MainActivity : ComponentActivity() {
         breadcrumb = header.findViewById(R.id.breadcrumb)
         breadcrumb.text = "Movies / Popular"
         header.findViewById<ImageButton>(R.id.menu).apply {
-            contentDescription = "Browse Movies or TV Shows"
-            setOnClickListener { showModeMenu() }
+            contentDescription = "Browse sections and sites"
+            setOnClickListener { showSectionMenu() }
         }
         header.findViewById<ImageButton>(R.id.search).apply {
             visibility = View.VISIBLE
@@ -227,7 +228,7 @@ class MainActivity : ComponentActivity() {
         searchBar.setSpeechRecognitionCallback {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                .putExtra(RecognizerIntent.EXTRA_PROMPT, "Search ${catalogType.label.lowercase()}")
+                .putExtra(RecognizerIntent.EXTRA_PROMPT, "Search ${searchLabel.lowercase()}")
             runCatching { voiceSearch.launch(intent) }.onFailure {
                 searchBar.findViewById<View>(androidx.leanback.R.id.lb_search_text_editor).requestFocus()
             }
@@ -361,13 +362,20 @@ class MainActivity : ComponentActivity() {
         movieGrid.requestFocus()
     }
 
-    private fun showModeMenu() {
+    private fun showSectionMenu(site: StreamingSite = activeSite) {
         browserDialog?.dismiss()
-        browserDialog = SiteMenuDialog.create(this, sites.menu(activeSite), catalogType) { item ->
+        browserDialog = SiteMenuDialog.create(this, sites.menu(site), sitePreferences.section(site.descriptor),
+            title = "Browse ${site.descriptor.name}") { item ->
             browserDialog?.dismiss()
             when (item) {
-                is BrowseMenuItem.Mode -> sitePreferences.selectMode(activeSite.descriptor, item.type)
-                is BrowseMenuItem.Site -> sitePreferences.activeSiteId = item.descriptor.id
+                is BrowseMenuItem.Section -> {
+                    sitePreferences.activeSiteId = site.descriptor.id
+                    sitePreferences.selectSection(site.descriptor, item.section)
+                }
+                is BrowseMenuItem.Site -> {
+                    showSectionMenu(sites.get(item.descriptor.id))
+                    return@create
+                }
                 BrowseMenuItem.Divider -> return@create
             }
             searchJob?.cancel()
@@ -379,10 +387,10 @@ class MainActivity : ComponentActivity() {
             episodeOverlay.visibility = View.GONE
             detailOverlay.visibility = View.GONE
             gallery.visibility = View.VISIBLE
-            catalogType = sitePreferences.mode(activeSite.descriptor)
+            catalogSection = sitePreferences.section(activeSite.descriptor)
             searchQuery = ""
             searchBar.setSearchQuery("")
-            searchBar.title = catalogType.label
+            searchBar.title = searchLabel
             loadLatest()
         }.also { it.show() }
     }
@@ -391,19 +399,24 @@ class MainActivity : ComponentActivity() {
         searchJob?.cancel()
         searchPanel.visibility = View.GONE
         catalogQuery = null
-        breadcrumb.text = "${activeSite.descriptor.name} / ${catalogType.label}"
-        heading.text = "Popular ${catalogType.label}"
-        searchBar.title = catalogType.label
-        root.findViewById<ImageButton>(R.id.search).contentDescription = "Search ${catalogType.label.lowercase()}"
+        breadcrumb.text = "${activeSite.descriptor.name} / ${catalogSection.title}"
+        heading.text = catalogSection.title
+        searchBar.title = searchLabel
+        root.findViewById<ImageButton>(R.id.search).contentDescription = "Search ${searchLabel.lowercase()}"
         refreshContinueWatching()
         loadCatalogPage()
     }
 
+    private val searchLabel: String
+        get() = if (activeSite.descriptor.searchScope == SearchScope.SITE) activeSite.descriptor.name else catalogSection.title
+
     private fun search(submitted: Boolean = true) {
         val query = searchQuery.trim().takeIf { it.isNotEmpty() }
         catalogQuery = query
-        breadcrumb.text = "${activeSite.descriptor.name} / ${catalogType.label}" + if (query == null) "" else " / Search"
-        heading.text = if (query == null) "Popular ${catalogType.label}" else "Results for “$query”"
+        breadcrumb.text = if (query != null && activeSite.descriptor.searchScope == SearchScope.SITE)
+            "${activeSite.descriptor.name} / Search"
+        else "${activeSite.descriptor.name} / ${catalogSection.title}" + if (query == null) "" else " / Search"
+        heading.text = if (query == null) catalogSection.title else "Results for “$query”"
         loadCatalogPage()
         // Editing updates results without submitting or changing keyboard focus.
         if (submitted) {
@@ -417,12 +430,12 @@ class MainActivity : ComponentActivity() {
         catalogJob?.cancel()
         val generation = ++catalogGeneration
         val site = activeSite
-        val type = catalogType
+        val section = catalogSection
         val query = catalogQuery
-        status.text = if (append) "Loading more…" else "Loading ${type.label.lowercase()}…"
+        status.text = if (append) "Loading more…" else "Loading ${section.title.lowercase()}…"
         if (!append) status.visibility = View.VISIBLE
         if (!append) {
-            catalogBrowser.reset(site, CatalogRequest(type, query))
+            catalogBrowser.reset(site, CatalogRequest(section.id, query))
             movieCards.clear()
         }
         catalogJob = lifecycleScope.launch {
@@ -431,7 +444,7 @@ class MainActivity : ComponentActivity() {
                 if (generation != catalogGeneration || site !== activeSite) return@launch
                 status.isFocusable = false
                 status.setOnClickListener(null)
-                status.text = "No ${type.label.lowercase()} found."
+                status.text = "No ${section.title.lowercase()} found."
                 status.visibility = if (catalogItems.isEmpty()) View.VISIBLE else View.GONE
                 renderMovies(added, append)
             } catch (error: CancellationException) {
@@ -461,9 +474,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refreshContinueWatching(focusTarget: PlayableRef? = null) {
-        val items = playbackProgress.list(activeSite.descriptor.id, catalogType)
+        val items = playbackProgress.list(activeSite.descriptor.id, catalogSection.id)
         resumeSection.visible = searchPanel.visibility != View.VISIBLE && items.isNotEmpty()
-        val cards = MediaCardAdapter(landscape = catalogType == MediaType.TV, image = { url, view ->
+        val cards = MediaCardAdapter(landscape = catalogSection.mediaType == MediaType.TV, image = { url, view ->
             images.load(url, view) { bitmap -> if (bitmap != null) view.setImageBitmap(bitmap) }
         }, select = { index, _ ->
             val item = items[index]
@@ -598,8 +611,8 @@ class MainActivity : ComponentActivity() {
         val header = layoutInflater.inflate(R.layout.browser_header, panel, false)
         header.findViewById<TextView>(R.id.breadcrumb).text = "TV Shows / ${show.title}"
         header.findViewById<ImageButton>(R.id.menu).apply {
-            contentDescription = "Browse Movies or TV Shows"
-            setOnClickListener { showModeMenu() }
+            contentDescription = "Browse sections and sites"
+            setOnClickListener { showSectionMenu() }
         }
         panel.addView(header)
         val seasonRow = LinearLayout(this).apply { setPadding(dp(36), dp(8), dp(36), dp(8)) }

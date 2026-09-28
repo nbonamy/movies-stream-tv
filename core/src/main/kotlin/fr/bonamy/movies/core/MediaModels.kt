@@ -10,6 +10,7 @@ data class Title(
     val releaseDate: String,
     val type: MediaType = MediaType.MOVIE,
     val siteId: String,
+    val sectionId: String = type.apiValue,
 ) {
     val ref get() = TitleRef(siteId, id, type)
 }
@@ -48,7 +49,7 @@ data class PlayableRef(val title: TitleRef, val episodeId: String? = null,
     val key: String get() = com.google.gson.Gson().toJson(listOf("v2", siteId, type.name, id, episodeId))
 }
 
-data class CatalogRequest(val type: MediaType, val query: String? = null)
+data class CatalogRequest(val sectionId: String, val query: String? = null)
 data class PageToken(val siteId: String, val request: CatalogRequest, val value: String)
 data class CatalogPage(val items: List<Title>, val next: PageToken?)
 data class SeasonRef(val show: TitleRef, val id: String, val number: Int? = null)

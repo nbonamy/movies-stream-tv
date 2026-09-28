@@ -10,7 +10,7 @@ class CatalogBrowser(site: StreamingSite, request: CatalogRequest) {
     val canLoadMore: Boolean get() = !state.loading && (!state.loaded || state.next != null)
 
     fun reset(site: StreamingSite, request: CatalogRequest) {
-        require(request.type in site.descriptor.mediaTypes)
+        site.descriptor.section(request.sectionId)
         state = State(site, request)
     }
 
@@ -26,7 +26,13 @@ class CatalogBrowser(site: StreamingSite, request: CatalogRequest) {
         try {
             val page = current.site.browse(current.request, current.next)
             if (state !== current) return null
-            require(page.items.all { it.siteId == current.site.descriptor.id && it.type == current.request.type })
+            val descriptor = current.site.descriptor
+            val siteSearch = !current.request.query.isNullOrBlank() && descriptor.searchScope == SearchScope.SITE
+            require(page.items.all { item ->
+                item.siteId == descriptor.id &&
+                    (siteSearch || item.sectionId == current.request.sectionId) &&
+                    descriptor.sections.any { it.id == item.sectionId && it.mediaType == item.type }
+            })
             require(page.next == null || (page.next.siteId == current.site.descriptor.id && page.next.request == current.request))
             require(page.next == null || page.next != current.next) { "Site repeated its page token" }
             val known = current.items.map { it.ref }.toSet()

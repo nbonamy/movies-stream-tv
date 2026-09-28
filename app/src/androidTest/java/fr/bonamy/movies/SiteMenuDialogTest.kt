@@ -7,6 +7,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import fr.bonamy.movies.core.BrowseMenuItem
 import fr.bonamy.movies.core.MediaType
 import fr.bonamy.movies.core.SiteDescriptor
+import fr.bonamy.movies.core.SiteSection
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -15,22 +16,34 @@ class SiteMenuDialogTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val activity = instrumentation.startActivitySync(Intent(instrumentation.targetContext, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)) as MainActivity
-        val first = BrowseMenuItem.Site(SiteDescriptor("first", "First site", listOf(MediaType.MOVIE)))
-        val second = BrowseMenuItem.Site(SiteDescriptor("second", "Second site", listOf(MediaType.MOVIE, MediaType.TV)))
+        val first = BrowseMenuItem.Site(SiteDescriptor("first", "First site", listOf(SiteSection("movie", "Movies", MediaType.MOVIE))))
+        val second = BrowseMenuItem.Site(SiteDescriptor("second", "Second site", listOf(SiteSection("movie", "Movies", MediaType.MOVIE), SiteSection("tv", "TV Shows", MediaType.TV))))
         var selected: BrowseMenuItem? = null
         var dialog: android.app.Dialog? = null
         try {
             instrumentation.runOnMainSync {
                 dialog = SiteMenuDialog.create(activity,
-                    listOf(BrowseMenuItem.Mode(MediaType.MOVIE), BrowseMenuItem.Divider, first, second), MediaType.MOVIE) {
+                    listOf(BrowseMenuItem.Section(SiteSection("movie", "Movies", MediaType.MOVIE)), BrowseMenuItem.Divider, first, second), SiteSection("movie", "Movies", MediaType.MOVIE)) {
                     selected = it
                     dialog?.dismiss()
                 }
                 dialog?.show()
             }
             fun focused(label: String) {
-                instrumentation.waitForIdleSync()
-                instrumentation.runOnMainSync { assertEquals(label, (dialog?.currentFocus as? TextView)?.text?.toString()) }
+                // Main-loop idle does not guarantee window focus or dispatched input.
+                val deadline = android.os.SystemClock.uptimeMillis() + 5_000
+                var actual: String? = null
+                var ownsInput = false
+                do {
+                    instrumentation.runOnMainSync {
+                        actual = (dialog?.currentFocus as? TextView)?.text?.toString()
+                        ownsInput = dialog?.window?.decorView?.hasWindowFocus() == true
+                    }
+                    if (ownsInput && actual == label) return
+                    android.os.SystemClock.sleep(20)
+                } while (android.os.SystemClock.uptimeMillis() < deadline)
+                assertTrue("Dialog window must own input", ownsInput)
+                assertEquals(label, actual)
             }
             focused("Movies")
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN)
