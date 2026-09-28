@@ -65,6 +65,24 @@ class KopotiSiteTest {
             assertThrows(java.io.IOException::class.java) { runBlocking { site.sources(PlayableRef(title.ref)) } }
         }
     }
+    @Test fun retainsProviderCookieAcrossSelfRedirectsAndLaterRequests() = runBlocking<Unit> {
+        MockWebServer().use { server ->
+            server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse =
+                    if (request.getHeader("Cookie") != "g=true") {
+                        MockResponse().setResponseCode(302).setHeader("Location", request.path!!)
+                            .setHeader("Set-Cookie", "g=true; Path=/; Max-Age=31536000")
+                    } else MockResponse().setBody("""<div class="film-detail-synopsis">Cookie accepted</div>
+                        <div class="film-player"><iframe src="https://sharecloudy.com/iframe/cookiecheck"></iframe></div>""")
+            }
+            val site = KopotiSite(OkHttpClient(), server.url("/folder/home/kopoti/"))
+            val title = Title("42", "Toy story", "", "", "", "", "", siteId = "kopoti", sectionId = "films")
+            assertEquals("Cookie accepted", site.details(title).overview)
+            assertEquals("sharecloudy", site.sources(PlayableRef(title.ref)).defaultSourceId)
+            assertEquals(3, server.requestCount)
+        }
+    }
+
     private fun json(title: String, id: String, more: Boolean) = MockResponse().setBody("""
         {"films":[{"id":"99","title":"$title","poster":"https://images.example/poster.jpg",
         "link":"/folder/b/kopoti/$id"}],"hasMore":$more}

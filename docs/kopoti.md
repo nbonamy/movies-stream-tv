@@ -14,6 +14,10 @@ continuation and cancellation. This is intentionally section-scoped; it does
 not query the site's unrelated categories or Vidbox. Large searches may need
 several requests.
 
+The adapter keeps an in-memory, provider-local cookie session. Some title pages
+set a cookie and redirect to themselves; retaining that cookie avoids a redirect
+loop. Normal cookie domain, path and expiry rules apply, and nothing is persisted.
+
 Details parse the site's synopsis. Source discovery recognizes the ShareCloudy
 iframe; resolution reloads the detail and player pages for a fresh stream.
 `ShareCloudyExtractor` reads static JW Player source data without executing
@@ -40,7 +44,13 @@ is claimed for Kopoti IDs; embedded subtitles still work.
 - All five Android instrumentation tests pass. The menu test waits for actual
   dialog window focus and the expected focused row before sending the next key;
   main-loop idle alone can precede window focus or input dispatch.
-- Physical TV playback and episode auto-binging were not exercised in this pass.
+- A cookie-redirect regression failed before the session fix and passed after it.
+  Toy Story 5 then played natively on the emulator (00:14 of 1:43:27). Nine other
+  titles in a first-page scan exhibited the same self-redirect cookie gate.
+  The full suite passes with 24 core tests, lint and APK builds.
+- The cookie fix was installed only on the emulator; the physical TV was not
+  updated. Physical TV playback and episode auto-binging were not exercised in
+  this pass.
 
 Cloudflare may challenge clients differently over time. Validation used the
 app's native HTTP user agent without imported browser cookies or a browser runtime.

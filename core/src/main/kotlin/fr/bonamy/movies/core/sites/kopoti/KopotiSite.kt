@@ -5,6 +5,8 @@ import fr.bonamy.movies.core.*
 import fr.bonamy.movies.core.extractors.ShareCloudyExtractor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
+import okhttp3.Cookie
+import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -26,7 +28,7 @@ class KopotiSite internal constructor(
     override val series: SeriesCatalog? = null
     private val folder = home.pathSegments.first()
     private val prefix = "/$folder/b/kopoti/"
-    private val transport = HttpTransport(http, allowLoopback = home.host in listOf("localhost", "127.0.0.1"))
+    private val transport = HttpTransport(http.newBuilder().cookieJar(KopotiCookies()).build(), allowLoopback = home.host in listOf("localhost", "127.0.0.1"))
     private val extractor = ShareCloudyExtractor(transport)
 
     override suspend fun browse(request: CatalogRequest, after: PageToken?): CatalogPage = runInterruptible(Dispatchers.IO) {
@@ -107,5 +109,23 @@ class KopotiSite internal constructor(
         const val ID = "kopoti"
         private val YEAR = Regex("\\s*\\((\\d{4})\\)")
         private val SOURCE = PlaybackSource("sharecloudy", "ShareCloudy")
+    }
+}
+
+/** Provider session only; cookies are never persisted or shared with another site. */
+private class KopotiCookies : CookieJar {
+    private val cookies = mutableListOf<Cookie>()
+
+    @Synchronized override fun saveFromResponse(url: HttpUrl, received: List<Cookie>) {
+        val now = System.currentTimeMillis()
+        cookies.removeAll { old -> old.expiresAt <= now || received.any {
+            it.name == old.name && it.domain == old.domain && it.path == old.path
+        } }
+        cookies.addAll(received.filter { it.expiresAt > now })
+    }
+
+    @Synchronized override fun loadForRequest(url: HttpUrl): List<Cookie> {
+        cookies.removeAll { it.expiresAt <= System.currentTimeMillis() }
+        return cookies.filter { it.matches(url) }
     }
 }
