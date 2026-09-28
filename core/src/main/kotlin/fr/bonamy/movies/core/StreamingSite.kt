@@ -23,8 +23,12 @@ interface StreamingSite {
 }
 
 interface SeriesCatalog {
+    /** Seasons and episodes are returned in playback order. IDs remain opaque. */
     suspend fun seasons(show: TitleRef): List<Season>
     suspend fun episodes(season: SeasonRef): List<Episode>
+
+    /** Null means the last listed episode; lookup failures must propagate. */
+    suspend fun nextEpisode(current: PlayableRef): Episode? = findNextEpisode(this, current)
 }
 
 /** Extractor request types belong to the playback host, never to the Android UI. */
