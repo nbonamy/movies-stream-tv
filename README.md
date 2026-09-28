@@ -1,50 +1,70 @@
-# Movies for Android TV
+<p align="center">
+  <img src="branding/movies-banner.svg" alt="Movies" width="320">
+</p>
 
-A native Android TV browser for Vidbox movies and TV shows and Kopoti films (À l’affiche) and spectacles, with catalogs, search, seasons, episodes, and fullscreen playback. The UI reuses MediaStation's Android TV layouts, drawable selectors, typography, and dialog implementation. See [UI provenance](docs/mediastation-ui.md).
+# Movies Stream
 
-## Remote
+**Movies, series, and spectacles. Made for your TV.**
 
-- Use the **hamburger menu** to switch between the selected site’s **sections** and other registered sites. Search follows the selected site’s scope (all of Kopoti or the current Vidbox section); edits are debounced without dismissing the keyboard.
-- Open **Search** and scan the QR code to search from your phone. Use the same network and keep Movies Stream open on the TV. The phone mini site sends your query to the selected site and its current section; results appear on the TV. The address below the QR code also works in a browser.
-- Keep navigating **Down** to load more titles automatically; there are no page buttons.
-- **Continue watching** appears above the popular catalog in each section, separately for each site. Select a card to resume directly; reopening a title from its details or episode list also restores its position.
-- Select a movie poster, then **Watch**. For TV shows, select **Episodes**, choose a season, then an episode thumbnail.
-- Press physical **Back** to close a picker, then hide playback controls, then leave the player.
-- Press **Up** during playback to focus **Subtitles**. Move **Right** through **Quality** and **Source**. Focus is indicated by MediaStation's white underline.
-- Open **Source** to switch servers. The app starts on Vidbox's **Max** default and remembers the selected available source separately for each site.
-- Open **Subtitles** to choose an in-stream track or search **French and English** subtitles online. Select a release to download it, or choose **Off**. See [subtitle discovery](docs/subtitles.md).
-- In-progress playback remembers the selected subtitle (including Off). Auto-binging loads subtitles in the previous episode’s language automatically, using the new episode’s own subtitle file.
-- Playback starts at the highest supported bitrate. **Quality** lists the available resolutions and **Auto**; switching preserves playback position.
-- Use the native Media3 controls to pause and seek.
-- At the end of a movie, the player closes. TV playback starts the next episode
-  from the beginning, continuing into the next season when available; after the
-  final listed episode, the player closes.
+Browse Vidbox and Kopoti from a native Android TV app. Find something to watch, settle in, and pick up where you left off—all with your TV remote.
 
-## Architecture
+## Your next watch, a few clicks away
 
-- `:core` defines the `StreamingSite` and optional `SeriesCatalog` interfaces. Site adapters own catalogs, search, details, seasons/episodes and source policy. Vidbox and Kopoti are registered; each site owns its section IDs and display titles. See [multi-site architecture](docs/multi-site-design.md) and [TV browsing](docs/tv-browsing.md).
-- Separate Max, Vidpro, VidRock and ShareCloudy extractors resolve fresh streams with required request headers. Shared HTTP and French/English subtitle lookup stay independent of site parsing.
-- `:app` renders native Android views and plays HLS/MP4 with Media3 ExoPlayer. Register additional sites in `AppServices.sites`; menus follow their capabilities.
-- No browser component or provider JavaScript is included in the app.
+- **Browse from the couch.** Explore posters, title details, seasons, and episodes with navigation built for a TV remote. Keep scrolling to discover more.
+- **Search with your phone.** Scan the QR code on your TV and type on your phone. Results appear on the big screen.
+- **Pick up where you left off.** Continue watching brings unfinished movies and episodes back to the top of each section, with your playback position saved on the device.
+- **Keep the series going.** The next episode starts automatically, including across seasons.
+- **Watch your way.** Choose a source, adjust quality, and select subtitles without leaving the player. Search online for French and English subtitles; the next episode follows your previous subtitle language.
 
-## Build and deploy
+## Two catalogs, one remote
 
-Run `make check` for tests, lint and the debug build, or `make build` to build only.
-The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. Deployments use
-this debug APK and preserve existing app data with `adb install -r`.
+| Site | What you can browse |
+| --- | --- |
+| **Vidbox** | Movies and TV shows, with seasons and episodes |
+| **Kopoti** | Films in **À l’affiche** and **Spectacles**, plus search across its catalog |
+
+Switch sites and sections from the menu. Each site remembers your selected source and keeps its own Continue watching history. Catalogs and playable sources depend on what each site currently provides.
+
+## Start watching
+
+Once installed, open **Movies Stream** on your TV:
+
+1. Choose a site and section from the menu.
+2. Browse the catalog or open **Search**. To type from your phone, scan the QR code while both devices are on the same network and keep the app open on the TV.
+3. Select a movie and choose **Watch**, or open a show's **Episodes** and pick an episode.
+
+During playback, press **Up** to reach **Subtitles**, then **Right** for **Quality** and **Source**. Use **Back** to dismiss a picker, hide the controls, or return to browsing.
+
+[Read the remote and playback guide →](docs/user-guide.md)
+
+## Install on your Android TV
+
+Build and sideload the app using **JDK 17**, the **Android SDK with platform 36**, and **ADB**. The app requires **Android TV 8.0 or later** and an internet connection. Enable debugging on your TV and authorize your computer before installing.
 
 ```sh
-make deploy             # Build and install on TV (192.168.1.4:5555), without launching
-make run                # Restart the installed app on TV
-make deploy-emulator    # Build, install and restart on emulator-5554
-make install-emulator   # Build and install on emulator without launching
+# Build and install; replace the address with your TV's ADB address
+make deploy ANDROID_TV_DEVICE=192.168.1.10:5555
+
+# Launch the installed app
+make run ANDROID_TV_DEVICE=192.168.1.10:5555
 ```
 
-Like MediaStation, override the target with `ANDROID_TV_DEVICE`:
-`make deploy ANDROID_TV_DEVICE=192.168.1.10:5555`. For another running emulator,
-use `make deploy-emulator ANDROID_EMULATOR_DEVICE=emulator-5556`.
-Run `make devices` to list connected devices and `make help` for all targets.
+The current workflow installs a debug APK. Updates preserve app data, including playback progress. To build the APK without installing it, run `make build`; the output is `app/build/outputs/apk/debug/app-debug.apk`.
 
-Playback progress stays on this device and survives app restarts and updates. It is saved every five seconds and on pause, seek, exit, or backgrounding. Like MediaStation, playback becomes resumable after 30 seconds and leaves Continue watching after 95% or completion. Source changes retain the same title's progress. See [resume playback](docs/resume-playback.md).
+For a running Android TV emulator:
 
-Kopoti uses its category API for À l’affiche and Spectacles. Search uses its website search API across all categories, including films outside À l’affiche and spectacles. See [Kopoti integration](docs/kopoti.md).
+```sh
+make deploy-emulator
+```
+
+This installs and launches on `emulator-5554`. Override `ANDROID_EMULATOR_DEVICE` for another emulator. Use `make devices` to list ADB devices and `make help` for all commands.
+
+## For developers
+
+Movies Stream uses native Android views and Media3 ExoPlayer for HLS/MP4 playback. The `:core` module owns site adapters, stream extraction, and subtitle discovery; `:app` owns the TV experience. The app includes no browser component and does not execute provider JavaScript.
+
+Run `make check` for tests, lint, and a debug build.
+
+- [Multi-site architecture](docs/multi-site-design.md) · [Kopoti integration](docs/kopoti.md)
+- [TV browsing](docs/tv-browsing.md) · [Resume playback](docs/resume-playback.md) · [Subtitles](docs/subtitles.md)
+- [MediaStation UI provenance](docs/mediastation-ui.md)
