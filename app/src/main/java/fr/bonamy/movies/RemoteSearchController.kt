@@ -25,17 +25,20 @@ internal class RemoteSearchController(context: Context, private val onSearch: (S
         setBackgroundResource(R.drawable.remote_search_qr_frame)
         setPadding(dp(5), dp(5), dp(5), dp(5))
     }
-    private val label = TextView(context).apply {
+    private val addressLabel = TextView(context).apply {
         textSize = 11f
-        setTextColor(0xffb9c7d6.toInt())
-        gravity = Gravity.END
-        setPadding(0, 0, dp(12), 0)
+        setSingleLine(true)
+        setTextColor(0xffb8c2ce.toInt())
+        gravity = Gravity.CENTER
+        setPadding(0, dp(6), 0, 0)
     }
     val shortcut = LinearLayout(context).apply {
-        gravity = Gravity.CENTER_VERTICAL
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
         visibility = View.GONE
-        addView(label)
-        addView(qr, LinearLayout.LayoutParams(dp(86), dp(86)))
+        // Match Music's QR size; the URL measures independently below it.
+        addView(qr, LinearLayout.LayoutParams(dp(72), dp(72)))
+        addView(addressLabel, LinearLayout.LayoutParams(-2, -2))
     }
     private val page = context.assets.open("remote/index.html").bufferedReader().use { it.readText() }
     private val icon = Bitmap.createBitmap(192, 192, Bitmap.Config.ARGB_8888).let { bitmap ->
@@ -60,8 +63,8 @@ internal class RemoteSearchController(context: Context, private val onSearch: (S
         }, page, icon)
         try {
             val url = candidate.start(currentAddress)
-            qr.setImageBitmap(QrCodeBitmap.create(url, dp(76)))
-            label.text = "Search from your phone\n$url"
+            qr.setImageBitmap(QrCodeBitmap.create(url, dp(72)))
+            addressLabel.text = url
             address = currentAddress
             server = candidate
             shortcut.visibility = View.VISIBLE
