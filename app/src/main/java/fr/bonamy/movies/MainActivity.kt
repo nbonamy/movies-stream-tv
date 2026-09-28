@@ -646,17 +646,21 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openPlayer(movie: Title, target: PlayableRef, episodeName: String? = null,
-        artwork: String = movie.poster) {
+        artwork: String = movie.poster, continuingSeries: Boolean = false) {
+        val preferredSource = if (continuingSeries) currentSourceId else sitePreferences.source(target.siteId)
         playbackJob?.cancel()
+        optionsDialog?.dismiss()
         releasePlayer()
         currentMovie = movie
         currentTarget = target
         currentEpisodeName = episodeName
         currentArtwork = artwork
-        val resumePosition = playbackProgress.position(target)
-        returnToHome = gallery.visibility == View.VISIBLE
+        val resumePosition = if (continuingSeries) 0 else playbackProgress.position(target)
+        if (!continuingSeries) {
+            returnToHome = gallery.visibility == View.VISIBLE
+            returnToEpisodes = episodeOverlay.visibility == View.VISIBLE
+        }
         gallery.visibility = View.GONE
-        returnToEpisodes = episodeOverlay.visibility == View.VISIBLE
         episodeOverlay.visibility = View.GONE
         detailOverlay.visibility = View.GONE
         val site = sites.get(target.siteId)
@@ -675,7 +679,7 @@ class MainActivity : ComponentActivity() {
                 val options = site.sources(target)
                 if (!playbackSession.isCurrent(ticket)) return@launch
                 availableSources = options.sources
-                currentSourceId = options.preferred(sitePreferences.source(site.descriptor.id)).id
+                currentSourceId = options.preferred(preferredSource).id
                 sourceButton.isEnabled = true
                 val stream = site.resolve(target, currentSourceId)
                 if (playbackSession.isCurrent(ticket)) startPlayback(stream, resumePosition)
@@ -701,22 +705,29 @@ class MainActivity : ComponentActivity() {
         exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
             .setForceHighestSupportedBitrate(true)
             .build()
+        var endHandled = false
         exoPlayer.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
+                if (player !== exoPlayer) return
                 if (state == Player.STATE_READY) {
+                    endHandled = false
                     playbackReady = true
                     playerStatus.visibility = View.GONE
                 }
-                if (state == Player.STATE_ENDED) savePlaybackProgress()
+                if (state == Player.STATE_ENDED && !endHandled) {
+                    endHandled = true
+                    onPlaybackEnded(exoPlayer)
+                }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (!isPlaying) savePlaybackProgress()
+                if (player === exoPlayer && !isPlaying) savePlaybackProgress()
             }
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo,
                 newPosition: Player.PositionInfo, reason: Int) {
-                if (reason == Player.DISCONTINUITY_REASON_SEEK) savePlaybackProgress()
+                if (player === exoPlayer && reason == Player.DISCONTINUITY_REASON_SEEK) savePlaybackProgress()
             }
             override fun onTracksChanged(tracks: Tracks) {
+                if (player !== exoPlayer) return
                 val subtitle = pendingSubtitle ?: return
                 val group = tracks.groups.firstOrNull { group ->
                     group.type == C.TRACK_TYPE_TEXT && (0 until group.length).any {
@@ -730,6 +741,7 @@ class MainActivity : ComponentActivity() {
                     .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, listOf(index))).build()
             }
             override fun onPlayerError(error: PlaybackException) {
+                if (player !== exoPlayer) return
                 playerStatus.text = "Playback stopped\n${error.errorCodeName}"
                 playerStatus.visibility = View.VISIBLE
             }
@@ -748,6 +760,50 @@ class MainActivity : ComponentActivity() {
             }
         }
         playerView.showController()
+    }
+
+    private fun onPlaybackEnded(endedPlayer: ExoPlayer) {
+        if (player !== endedPlayer || endedPlayer.playbackState != Player.STATE_ENDED) return
+        savePlaybackProgress()
+        val target = currentTarget ?: return
+        val title = currentMovie ?: return
+        if (target.type == MediaType.MOVIE) {
+            closePlayer()
+            return
+        }
+        val series = playbackSite?.series ?: return
+        optionsDialog?.dismiss()
+        subtitleJob?.cancel()
+        playbackJob?.cancel()
+        val ticket = playbackSession.next()
+        playerStatus.text = "Loading next episode…"
+        playerStatus.visibility = View.VISIBLE
+        playbackJob = lifecycleScope.launch {
+            try {
+                val next = series.nextEpisode(target)
+                currentCoroutineContext().ensureActive()
+                if (!playbackSession.isCurrent(ticket) || player !== endedPlayer ||
+                    endedPlayer.playbackState != Player.STATE_ENDED) return@launch
+                if (next == null) closePlayer()
+                else {
+                    require(next.target.title == target.title && next.target.key != target.key)
+                    openPlayer(title, next.target, next.name,
+                        next.still.ifBlank { title.backdrop.ifBlank { title.poster } }, continuingSeries = true)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (!playbackSession.isCurrent(ticket) || player !== endedPlayer ||
+                    endedPlayer.playbackState != Player.STATE_ENDED) return@launch
+                playerStatus.visibility = View.GONE
+                showOptionsDialog(DialogUtils.getDialogBuilder(this@MainActivity, "Next episode unavailable")
+                    .setMessage("Could not load the next episode.")
+                    .setPositiveButton("Retry") { dialog, _ ->
+                        dialog.dismiss()
+                        onPlaybackEnded(endedPlayer)
+                    }.create())
+            }
+        }
     }
 
     private fun showSourceOptions() {

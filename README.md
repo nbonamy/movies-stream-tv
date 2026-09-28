@@ -15,6 +15,9 @@ A native Android TV browser for Vidbox movies and TV shows and Kopoti films (À 
 - Open **Subtitles** to choose an in-stream track or search **French and English** subtitles online. Select a release to download it, or choose **Off**. See [subtitle discovery](docs/subtitles.md).
 - Playback starts at the highest supported bitrate. **Quality** lists the available resolutions and **Auto**; switching preserves playback position.
 - Use the native Media3 controls to pause and seek.
+- At the end of a movie, the player closes. TV playback starts the next episode
+  from the beginning, continuing into the next season when available; after the
+  final listed episode, the player closes.
 
 ## Architecture
 

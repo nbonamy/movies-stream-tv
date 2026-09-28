@@ -50,7 +50,10 @@ subtitle method defaults to no online lookup; in-stream tracks remain available.
 - `PlayableRef` adds an opaque episode ID for TV. Season/episode numbers are
   optional display metadata; they are not universal identity fields.
 - `SeasonRef` has an opaque season ID. A site has a TV section exactly when it supplies
-  a `SeriesCatalog`.
+  a `SeriesCatalog`. Its lists are in playback order. The default `nextEpisode`
+  follows that order across seasons using opaque episode identity; sites may
+  override it to use their own next-episode endpoint. Null means the final listed
+  episode, while lookup failures propagate for retry.
 - `PlaybackOptions` supplies available sources and the default. A remembered
   selection is used only if still available. Explicit resolution failures do not
   silently switch to another source.
@@ -142,5 +145,5 @@ remain shared; Continue watching uses the section of its saved title.
 
 Sections control browsing, labels, search and continuation. `Title.type`,
 `PlayableRef` and `SeriesCatalog` still control standalone versus episode
-playback. Future episode auto-binging must use those contracts, never section
-IDs or display titles.
+playback. Episode auto-binging uses those contracts, never section IDs or
+display titles.

@@ -57,23 +57,27 @@ class CatalogTest {
     }
 
     @Test
-    fun readsActualSeasonNumbersAndLoadsOnlyTheChosenSeason() {
+    fun readsActualSeasonNumbersAndLoadsOnlyTheChosenSeason() = runBlocking<Unit> {
         MockWebServer().use { server ->
             val props = """7:["$","Show",null,{"props":{"id":55,"overview":"${"A".repeat(50_000)}","seasons":[{"season_number":0,"name":"Specials","episode_count":2},{"season_number":2,"name":"Season 2","episode_count":3},{"season_number":5,"name":"Future","episode_count":0}]}}]
 """
             val chunk = Gson().toJson(listOf(1, props))
-            server.enqueue(MockResponse().setBody("""<script src="/_next/static/chunks/common.fixture.js"></script><script>self.__next_f.push($chunk)</script>"""))
+            val page = """<script src="/_next/static/chunks/common.fixture.js"></script><script>self.__next_f.push($chunk)</script>"""
+            val episodeResponse = """{"episodes":[{"season_number":2,"episode_number":3,"name":"Third","overview":"Plot","still_path":"/third.jpg"},{"season_number":2,"episode_number":1,"name":"First"},{"season_number":1,"episode_number":2,"name":"Wrong season"}]}"""
+            server.enqueue(MockResponse().setBody(page))
             server.enqueue(MockResponse().setBody("""let r="https://api.themoviedb.org/3/tv/".concat(e,"/season/").concat(t,"?language=en-US&api_key=").concat("00000000000000000000000000000000");"""))
-            server.enqueue(MockResponse().setBody("""{"episodes":[{"season_number":2,"episode_number":3,"name":"Third","overview":"Plot","still_path":"/third.jpg"},{"season_number":2,"episode_number":1,"name":"First"},{"season_number":1,"episode_number":2,"name":"Wrong season"}]}"""))
+            server.enqueue(MockResponse().setBody(episodeResponse))
             val http = OkHttpClient.Builder().addInterceptor { chain ->
                 val request = chain.request()
                 val rewritten = if (request.url.host == "api.themoviedb.org") request.newBuilder()
                     .url(server.url(request.url.encodedPath + "?" + request.url.encodedQuery)).build() else request
                 chain.proceed(rewritten)
             }.build()
-            val client = VidboxClient(http = http, catalogOrigin = server.url("/"))
-            assertEquals(listOf(0, 2), client.seasons("55").map { it.number })
-            val episodes = client.episodes("55", 2)
+            val catalog = VidboxSite(VidboxClient(http = http, catalogOrigin = server.url("/"))).series
+            val show = TitleRef(VidboxSite.ID, "55", MediaType.TV)
+            val seasons = catalog.seasons(show)
+            assertEquals(listOf(0, 2), seasons.map { it.number })
+            val episodes = catalog.episodes(seasons.last().ref)
             assertEquals(listOf(1, 3), episodes.map { it.number })
             assertEquals("https://image.tmdb.org/t/p/w500/third.jpg", episodes.last().still)
             assertEquals("/tv/55", server.takeRequest().path)
@@ -82,6 +86,12 @@ class CatalogTest {
             assertEquals("/3/tv/55/season/2", request.encodedPath)
             assertEquals("en-US", request.queryParameter("language"))
             assertEquals(3, server.requestCount)
+            // Exercise the real adapter's next-episode interface and parsed ordering.
+            server.enqueue(MockResponse().setBody(page))
+            server.enqueue(MockResponse().setBody(episodeResponse))
+            assertEquals(episodes.last(), catalog.nextEpisode(episodes.first().target))
+            assertEquals("/tv/55", server.takeRequest().path)
+            assertEquals("/3/tv/55/season/2", server.takeRequest().requestUrl!!.encodedPath)
         }
     }
 }
