@@ -35,6 +35,20 @@ such a title starts at the beginning.
 
 ## End of playback
 
+During the final 30 seconds of a TV episode, a compact **Next episode** button
+appears at the bottom right and receives focus. OK starts the next episode
+immediately. Back dismisses the prompt while playback continues; automatic
+continuation still happens at the actual end. Seeking back outside the final
+30 seconds allows the prompt to appear again when that point is reached.
+
+The prompt waits while player controls or a picker are open and never steals
+focus repeatedly. It appears only after a next episode has been found, including
+across seasons. Movies, final episodes, unknown durations and failed lookups do
+not show it. One prefetched metadata lookup is shared with automatic continuation;
+leaving or replacing the player cancels it. Stream URLs are still resolved fresh
+only when advancing. An early advance completes the previous bookmark and carries
+the same source preference and subtitle language as end-of-stream continuation.
+
 A completed movie closes the player. A completed episode is removed from Continue
 watching and the next episode starts at the beginning, even if it has an older
 bookmark. The selected source is retained when available for the next episode.
@@ -79,3 +93,10 @@ home with its card focused. Long-press opened Remove without starting playback;
 Back restored card focus. Removal focused the neighboring card, then the catalog
 after the final removal, and remained removed after restart. Original bookmarks
 were restored after these checks.
+
+The next-episode prompt was verified with native Reacher playback on the emulator:
+S2E3 displayed the focused button within its final 30 seconds; remote OK started
+S2E4 from the beginning. Dismissing the S2E4 prompt with Back still allowed
+end-of-stream continuation into S2E5. Instrumentation tests cover the 30-second
+boundary, focus, dismissal and seeking back, cancelled lookups, final episodes,
+lookup reuse and retry after failure.

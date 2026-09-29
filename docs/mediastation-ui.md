@@ -28,6 +28,7 @@ Colors, dimensions, font weights, and styles are imported from the corresponding
 - Up focuses Subtitles; Left/Right moves between menus; Down returns to the timeline.
 - Back dismisses a picker, then hides controls, then exits playback. Focus returns to Watch, then to the original gallery card.
 - Start with Media3's highest supported bitrate. Quality offers Auto and the supported video tracks; an explicit selection changes the track without restarting playback.
+- A compact white **Next episode** prompt appears at the bottom right during the last 30 seconds of TV playback, over the full-screen video. It receives focus once; Back dismisses it. It is separate from the three top-bar menus.
 - Pickers use MediaStation's selected-row state, independently of the currently focused row.
 
 ## Verification

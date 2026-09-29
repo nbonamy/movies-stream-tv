@@ -48,6 +48,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import fr.bonamy.movies.core.Title
+import fr.bonamy.movies.core.Episode
 import fr.bonamy.movies.core.MediaType
 import fr.bonamy.movies.core.PlayableRef
 import fr.bonamy.movies.core.UniversalSearch
@@ -132,6 +133,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var sourceButton: Button
     private lateinit var subtitlesButton: Button
     private lateinit var qualityButton: Button
+    private lateinit var nextEpisodeButton: Button
+    private lateinit var nextEpisodePrompt: NextEpisodePrompt
     private var player: ExoPlayer? = null
     private var progressJob: Job? = null
     private var playbackReady = false
@@ -352,8 +355,11 @@ class MainActivity : ComponentActivity() {
         controls.addView(subtitlesButton)
         controls.addView(qualityButton)
         controls.addView(sourceButton)
+        nextEpisodeButton = playerLayer.findViewById(R.id.next_episode)
+        nextEpisodePrompt = NextEpisodePrompt(nextEpisodeButton, playerView, lifecycleScope, ::playNextEpisode)
         playerView.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
             playerTopBar.visibility = visibility
+            if (visibility == View.VISIBLE) nextEpisodePrompt.dismiss()
         })
         playerStatus = text("Preparing movie…", 20f, Color.WHITE).apply {
             gravity = Gravity.CENTER
@@ -859,10 +865,23 @@ class MainActivity : ComponentActivity() {
         exoPlayer.prepare()
         if (startPosition > 0) exoPlayer.seekTo(startPosition)
         exoPlayer.playWhenReady = autoPlay && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        val target = currentTarget
+        val series = playbackSite?.series
+        if (target?.type == MediaType.TV && series != null) nextEpisodePrompt.start {
+            series.nextEpisode(target)?.also { next ->
+                require(next.target.title == target.title && next.target.key != target.key)
+            }
+        }
         progressJob = lifecycleScope.launch {
+            var ticks = 0
             while (true) {
-                delay(5_000)
-                savePlaybackProgress()
+                delay(500)
+                nextEpisodePrompt.update(exoPlayer.currentPosition, exoPlayer.duration,
+                    exoPlayer.playbackState == Player.STATE_READY && exoPlayer.playerError == null &&
+                        optionsDialog?.isShowing != true && playerTopBar.visibility != View.VISIBLE &&
+                        playerStatus.visibility != View.VISIBLE &&
+                        lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+                if (++ticks % 10 == 0) savePlaybackProgress()
             }
         }
         playerView.showController()
@@ -872,12 +891,12 @@ class MainActivity : ComponentActivity() {
         if (player !== endedPlayer || endedPlayer.playbackState != Player.STATE_ENDED) return
         savePlaybackProgress()
         val target = currentTarget ?: return
-        val title = currentMovie ?: return
         if (target.type == MediaType.MOVIE) {
             closePlayer()
             return
         }
-        val series = playbackSite?.series ?: return
+        if (playbackSite?.series == null) return
+        nextEpisodePrompt.dismiss()
         optionsDialog?.dismiss()
         subtitleJob?.cancel()
         playbackJob?.cancel()
@@ -886,16 +905,12 @@ class MainActivity : ComponentActivity() {
         playerStatus.visibility = View.VISIBLE
         playbackJob = lifecycleScope.launch {
             try {
-                val next = series.nextEpisode(target)
+                val next = nextEpisodePrompt.nextEpisode()
                 currentCoroutineContext().ensureActive()
                 if (!playbackSession.isCurrent(ticket) || player !== endedPlayer ||
                     endedPlayer.playbackState != Player.STATE_ENDED) return@launch
                 if (next == null) closePlayer()
-                else {
-                    require(next.target.title == target.title && next.target.key != target.key)
-                    openPlayer(title, next.target, next.name,
-                        next.still.ifBlank { title.backdrop.ifBlank { title.poster } }, continuingSeries = true)
-                }
+                else playNextEpisode(next)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -910,6 +925,18 @@ class MainActivity : ComponentActivity() {
                     }.create())
             }
         }
+    }
+
+    private fun playNextEpisode(next: Episode) {
+        val target = currentTarget ?: return
+        val title = currentMovie ?: return
+        require(next.target.title == target.title && next.target.key != target.key)
+        val currentPlayer = player ?: return
+        playbackProgress.save(title, target, currentEpisodeName, currentArtwork,
+            currentPlayer.currentPosition, currentPlayer.duration, ended = true)
+        playbackReady = false // Releasing this player must not recreate the completed bookmark.
+        openPlayer(title, next.target, next.name,
+            next.still.ifBlank { title.backdrop.ifBlank { title.poster } }, continuingSeries = true)
     }
 
     private fun showSourceOptions() {
@@ -1266,6 +1293,7 @@ class MainActivity : ComponentActivity() {
     private fun releasePlayer() {
         savePlaybackProgress()
         progressJob?.cancel()
+        nextEpisodePrompt.stop()
         playbackReady = false
         subtitleJob?.cancel()
         subtitleSearch = null
@@ -1295,6 +1323,7 @@ class MainActivity : ComponentActivity() {
         detailSession.invalidate()
         when {
             optionsDialog?.isShowing == true -> optionsDialog?.dismiss()
+            playerLayer.visibility == View.VISIBLE && nextEpisodePrompt.dismiss() -> Unit
             playerLayer.visibility == View.VISIBLE && playerTopBar.visibility == View.VISIBLE -> {
                 playerView.hideController()
                 playerTopBar.visibility = View.GONE
@@ -1366,6 +1395,10 @@ class MainActivity : ComponentActivity() {
         }
         if (playerLayer.visibility == View.VISIBLE && optionsDialog?.isShowing != true &&
             event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            if (nextEpisodeButton.hasFocus() && event.keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER)) {
+                nextEpisodeButton.performClick()
+                return true
+            }
             if (playerTopBar.visibility == View.VISIBLE && event.keyCode in listOf(
                     KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_CENTER)) {
