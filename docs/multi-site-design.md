@@ -121,13 +121,14 @@ Selecting a site refreshes the menu with that site's sections and its name in th
 dialog title. Its remembered section receives initial focus, otherwise its first
 section does. The active site, saved selection and catalog change only when the
 user chooses a section. Back dismisses the menu without changing the catalog.
-Choosing a section loads its catalog and Continue watching list.
+Choosing a section loads its catalog and retains the universal Continue watching row.
 
 ## Persistence and migration
 
 Playback keys use a versioned JSON array of site, media type, title and episode
-identity, avoiding delimiter collisions for slugs or paths. Continue watching is
-filtered by both site and section. Selected source and section are also scoped
+identity, avoiding delimiter collisions for slugs or paths. Continue watching
+combines all registered sites and media types in recency order, while bookmarks
+retain their original site identity. Selected source and section are also scoped
 to the stable site ID. A domain or display-name change must not change that ID.
 
 `LegacyVidboxMigration` upgrades old movie/episode bookmarks and the old global
@@ -171,7 +172,7 @@ The old Vidbox mode preference (`MOVIE` / `TV`) maps to section IDs `movie` / `t
 until a section preference is saved. Existing bookmarks without `sectionId` use
 their old media type's ID. Playback keys are unchanged, preserving resume positions.
 If a title appears in more than one section its playback identity and position
-remain shared; Continue watching uses the section of its saved title.
+remain shared; Continue watching combines titles across sections and sites.
 
 Sections control browsing, labels, search and continuation. `Title.type`,
 `PlayableRef` and `SeriesCatalog` still control standalone versus episode

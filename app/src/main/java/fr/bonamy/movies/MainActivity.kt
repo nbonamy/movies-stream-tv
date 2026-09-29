@@ -532,20 +532,38 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refreshContinueWatching(focusTarget: PlayableRef? = null) {
-        val items = playbackProgress.list(activeSite.descriptor.id, catalogSection.id)
+        val siteNames = sites.sites.associate { it.descriptor.id to it.descriptor.name }
+        val items = playbackProgress.list().filter { it.target.siteId in siteNames }
         resumeSection.visible = searchPanel.visibility != View.VISIBLE && items.isNotEmpty()
-        val cards = MediaCardAdapter(landscape = catalogSection.mediaType == MediaType.TV, image = { url, view ->
+        val cards = MediaCardAdapter(landscape = true, image = { url, view ->
             images.load(url, view) { bitmap -> if (bitmap != null) view.setImageBitmap(bitmap) }
         }, select = { index, _ ->
             val item = items[index]
             openPlayer(item.movie, item.target, item.episodeName, item.artwork)
         }, focus = {
             movieGrid.post { (movieGrid.layoutManager as GridLayoutManager).scrollToPositionWithOffset(0, 0) }
+        }, longPress = { index, card ->
+            val item = items[index]
+            browserDialog?.dismiss()
+            var removed = false
+            browserDialog = DialogUtils.getDialogBuilder(this, playbackLabel(item.movie, item.target, item.episodeName))
+                .setItems(arrayOf("Remove")) { dialog, _ ->
+                    removed = true
+                    playbackProgress.remove(item.target)
+                    dialog.dismiss()
+                    val next = items.getOrNull(index + 1) ?: items.getOrNull(index - 1)
+                    refreshContinueWatching(next?.target ?: item.target)
+                }.create().also { dialog ->
+                    dialog.setOnDismissListener { if (!removed) card.requestFocus() }
+                    dialog.show()
+                }
         })
         cards.append(items.map { item ->
             val title = playbackLabel(item.movie, item.target, item.episodeName)
-            MediaCard(item.target, title, item.artwork,
-                (item.position.toDouble() / item.duration * 100).toInt())
+            val artwork = if (item.target.type == MediaType.MOVIE) item.movie.backdrop.ifBlank { item.artwork }
+                else item.artwork
+            MediaCard(item.target, title, artwork,
+                (item.position.toDouble() / item.duration * 100).toInt(), siteNames[item.target.siteId])
         })
         resumeGrid.adapter = cards
         if (focusTarget != null) {

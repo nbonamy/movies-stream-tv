@@ -12,7 +12,8 @@ import android.widget.TextView
 import android.widget.ProgressBar
 import androidx.recyclerview.widget.RecyclerView
 
-internal data class MediaCard(val id: Any, val title: String, val image: String, val progress: Int? = null)
+internal data class MediaCard(val id: Any, val title: String, val image: String, val progress: Int? = null,
+    val subtitle: String? = null)
 
 /** MediaStation cards with recycling for long movie catalogs and TV seasons. */
 internal class MediaCardAdapter(
@@ -20,6 +21,7 @@ internal class MediaCardAdapter(
     private val image: (String, ImageView) -> Unit,
     private val select: (Int, View) -> Unit,
     private val focus: (Int) -> Unit = {},
+    private val longPress: ((Int, View) -> Unit)? = null,
 ) : RecyclerView.Adapter<MediaCardAdapter.Holder>() {
     private val items = mutableListOf<MediaCard>()
     private val stableIds = mutableMapOf<Any, Long>()
@@ -69,6 +71,11 @@ internal class MediaCardAdapter(
         card.setOnClickListener {
             holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }?.let { select(it, card) }
         }
+        if (longPress != null) card.setOnLongClickListener {
+            val position = holder.bindingAdapterPosition
+            if (position == RecyclerView.NO_POSITION) false
+            else { longPress.invoke(position, card); true }
+        }
         card.setOnFocusChangeListener { _, focused ->
             if (focused) holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }?.let(focus)
         }
@@ -79,6 +86,10 @@ internal class MediaCardAdapter(
         val item = items[position]
         holder.itemView.contentDescription = item.title
         holder.itemView.findViewById<TextView>(R.id.title).text = item.title
+        holder.itemView.findViewById<TextView>(R.id.card_subtitle).apply {
+            text = item.subtitle
+            visibility = if (item.subtitle == null) View.GONE else View.VISIBLE
+        }
         holder.itemView.findViewById<ProgressBar>(R.id.progress).apply {
             visibility = if (item.progress == null) View.GONE else View.VISIBLE
             progress = item.progress ?: 0

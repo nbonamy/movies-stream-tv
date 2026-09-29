@@ -1,9 +1,16 @@
 # Resume playback
 
-Each home mode has a Continue watching row above its popular catalog. Movies use
-poster cards; TV entries use episode artwork, the show title, season/episode,
-and episode name. The progress bar copies MediaStation's video-card resource.
-Both sections scroll together, and the row is hidden during search or when empty.
+Every home section shows the same Continue watching row above its catalog, mixing
+movies and TV episodes from all registered sites, most recently watched first.
+Landscape cards show movie backdrops or episode artwork, a site label, and a
+progress bar copied from MediaStation. TV titles include the season/episode and
+episode name. The row scrolls with the catalog and is hidden during search or when empty.
+
+Long-press OK/Select on a card to open its menu. Remove clears only that item's
+bookmark, including its saved position and subtitle selection. It stays absent
+until watched again past the resume threshold. Back dismisses the menu without
+removing anything. Focus moves to a neighboring card after removal, or to the
+catalog when the row becomes empty.
 
 Selecting a Continue watching card opens the saved movie or episode directly.
 Physical Back returns to the row after hiding player controls. Opening the same
@@ -13,9 +20,11 @@ matching MediaStation's player behavior.
 `PlaybackProgress` stores metadata and playback position in local SharedPreferences,
 keyed by stable site ID, media type, opaque title ID and—for TV—opaque episode ID.
 Keys are versioned JSON arrays, so IDs containing slashes cannot collide. Existing
-Vidbox bookmarks migrate automatically without losing their saved positions. Source URLs and tokens
-are never saved; each playback resolves a fresh stream. Movie and TV home lists
-are separate for each site and sorted by the most recently saved playback. Progress is local
+Vidbox bookmarks migrate automatically without losing their saved positions.
+Source URLs and tokens are never saved; each playback resolves a fresh stream.
+The universal row keeps bookmarks distinct by site; matching titles from different
+sites are not merged. Selecting a card uses its original site without changing
+the current browsing site or section. Progress is local
 to the device; uninstalling or clearing app data removes it.
 
 Save every five seconds and on pause, seek, player release, and activity stop.
@@ -38,7 +47,7 @@ player cancels pending episode lookup; a lookup failure offers Retry.
 
 Android instrumentation tests exercise real SharedPreferences serialization,
 independent site/movie/episode keys, legacy migration, opaque IDs, site preferences,
-home-list filtering, incomplete stream
+universal ordering, targeted removal, incomplete stream
 metadata, completion thresholds, and malformed records. Build the app and test
 APK with `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest`, install both
 on the emulator, and run:
@@ -52,9 +61,9 @@ to Continue watching, app restart, direct resume, and navigation between the row
 and the popular catalog.
 
 Verified on the emulator with The Odyssey (41:41) and Reacher S2E3 (9:38):
-checkpoint during playback, background and restart the app, find each title only
-in its own home mode, and resume directly at its saved position. The episode
-reopened at 9:44 after several seconds of playback before pausing for inspection.
+checkpoint during playback, background and restart the app, find each title
+in its home mode (before the universal row was introduced), and resume directly
+at its saved position. The episode reopened at 9:44 after several seconds of playback before pausing for inspection.
 
 End-of-stream checks passed on the emulator: The Odyssey closed to its details
 screen; Reacher S2E3 advanced to S2E4 from 00:00 and played; S1E8 advanced to S2E1.
@@ -62,3 +71,11 @@ Back after automatic advancement returned to the original browsing screen.
 Core contract tests cover the final listed episode, empty seasons, opaque IDs,
 nonconsecutive numbers and failure/cancellation propagation; the real Vidbox
 adapter is also exercised through its next-episode interface with HTTP fixtures.
+
+Universal resume was verified on the emulator with a Kopoti movie and a Vidbox
+TV episode in the same row, including on Kopoti's movie-only home. Reacher S2E3
+resumed through Vidbox from 9:46, advanced to 10:32, and returned to the Kopoti
+home with its card focused. Long-press opened Remove without starting playback;
+Back restored card focus. Removal focused the neighboring card, then the catalog
+after the final removal, and remained removed after restart. Original bookmarks
+were restored after these checks.

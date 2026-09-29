@@ -47,4 +47,16 @@
 		style="@style/NormalCardItemTitle"
 		tools:text="Interstellar" />
 
+	<TextView
+		android:id="@+id/card_subtitle"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:paddingHorizontal="8dp"
+		android:paddingBottom="8dp"
+		android:textColor="#A8BDD8"
+		android:textSize="11sp"
+		android:maxLines="1"
+		android:ellipsize="end"
+		android:visibility="gone" />
+
 </LinearLayout>

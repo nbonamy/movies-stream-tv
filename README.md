@@ -8,7 +8,7 @@ from Vidbox, Kopoti and 123Movies.
 - **Catalog browsing** — poster galleries, title details, ratings and infinite scrolling.
 - **Universal search** — search all sites at once, with a horizontal results row for each site. Type on the TV or scan a QR code and search from a phone on the same network.
 - **TV shows** — season selection and episode browsing with thumbnails where available.
-- **Resume playback** — Continue Watching lists for movies and TV shows, with progress saved separately for each site.
+- **Resume playback** — One Continue Watching row for movies and TV shows across all sites. Long-press a card to remove it.
 - **Automatic next episode** — continues into the next season when available; the player closes at the end of a movie or the final listed episode.
 - **Subtitles** — available stream tracks, hosted subtitles and online French/English search where supported. Remembers the selected track and carries its language into the next episode.
 - **Quality and source selection** — starts at the highest supported bitrate and allows switching available resolutions or servers while retaining playback position.

@@ -29,8 +29,9 @@ internal class PlaybackProgress(private val preferences: SharedPreferences) {
 
     fun subtitle(target: PlayableRef): SubtitleSelection? = read(target.key)?.subtitle
 
-    fun list(siteId: String, sectionId: String): List<PlaybackBookmark> = preferences.all.keys.mapNotNull(::read)
-        .filter { it.target.siteId == siteId && it.movie.sectionId == sectionId }.sortedByDescending { it.updatedAt }
+    fun list(): List<PlaybackBookmark> = preferences.all.keys.mapNotNull(::read).sortedByDescending { it.updatedAt }
+
+    fun remove(target: PlayableRef) { preferences.edit().remove(target.key).apply() }
 
     fun save(movie: Title, target: PlayableRef, episodeName: String?, artwork: String,
         position: Long, duration: Long, ended: Boolean = false, subtitle: SubtitleSelection? = null) {
