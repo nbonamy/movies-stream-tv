@@ -56,7 +56,7 @@ Core paths below are relative to `core/src/main/kotlin/fr/bonamy/movies/core/`.
    the website. Explicit source failures must not silently choose another server.
 7. **Normalize optional capabilities.** Return headers for playlists, keys,
    segments and hosted subtitles. Use `ResolvedPlayback.subtitles` for hosted
-   WebVTT and `SubtitleContext` only for verified IMDb/episode identity. Offer
+   WebVTT/SRT and `SubtitleContext` only for verified IMDb/episode identity. Offer
    French and English subtitles. Site IDs are not IMDb IDs. Reuse shared resume
    and language carryover; add a shared contract only for a real new capability,
    never a site-name branch in the Activity.

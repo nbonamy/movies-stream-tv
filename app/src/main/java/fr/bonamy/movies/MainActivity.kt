@@ -859,7 +859,7 @@ class MainActivity : ComponentActivity() {
             .setSubtitleConfigurations(stream.subtitles.map { track ->
                 MediaItem.SubtitleConfiguration.Builder(Uri.parse(track.url))
                     .setId(track.id).setLanguage(track.language).setLabel(track.label)
-                    .setMimeType(MimeTypes.TEXT_VTT).build()
+                    .setMimeType(track.format.mimeType).build()
             })
             .setMimeType(stream.format.mimeType).build())
         exoPlayer.prepare()
@@ -999,6 +999,7 @@ class MainActivity : ComponentActivity() {
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                currentCoroutineContext().ensureActive()
                 if (player === currentPlayer && optionsDialog === dialog && dialog.isShowing) {
                     subtitleDialog(currentPlayer, null, "Could not search subtitles. Close and reopen to retry.")
                 }
@@ -1186,6 +1187,7 @@ class MainActivity : ComponentActivity() {
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                currentCoroutineContext().ensureActive()
                 if (player === currentPlayer && optionsDialog === dialog && dialog.isShowing) {
                     subtitleDialog(currentPlayer, subtitleSearch, "Could not download this subtitle. Choose another release or retry.")
                 }

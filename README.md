@@ -1,7 +1,7 @@
 # Movies Stream
 
 Native Android TV app for browsing and watching movies, TV shows and spectacles
-from Vidbox, Kopoti and 123Movies.
+from Vidbox, Kopoti, 123Movies and Cinejoy.
 
 ## Features
 
@@ -31,6 +31,7 @@ Screenshots are from the Android TV app. Artwork and metadata come from the sele
 | Vidbox | Movies, TV Shows | Multiple supported sources |
 | Kopoti | À l'affiche, Spectacles | ShareCloudy |
 | 123Movies | Movies, TV Shows | Server 1 |
+| Cinejoy | Movies, TV Shows | Nebula (default), Lisbon, Solara, Athens; availability varies by title |
 
 Use the hamburger menu to switch sites and sections. Each site remembers its
 selected source and keeps its own playback history. Catalogs, working sources,
@@ -82,7 +83,7 @@ make check  # Tests, Android lint and debug build
 
 Read [AGENTS.md](AGENTS.md) before changing the app or adding a site.
 The [multi-site architecture](docs/multi-site-design.md) describes the shared
-interfaces; [Kopoti](docs/kopoti.md) and [123Movies](docs/123movies.md) document
+interfaces; [Kopoti](docs/kopoti.md) and [123Movies](docs/123movies.md) and [Cinejoy](docs/cinejoy.md) document
 individual integrations.
 
 The bundled Lato font is distributed under the [SIL Open Font License](licenses/Lato-OFL.txt).

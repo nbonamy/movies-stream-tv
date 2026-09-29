@@ -84,3 +84,14 @@ site/episode isolation, completion, and unknown subtitle records. On the emulato
 Reacher S2E3 restored French captions after a force-stop/relaunch; seeking to its
 end advanced to S2E4 and automatically selected/rendered S2E4's French subtitle.
 The original emulator bookmarks were restored after validation.
+
+## Provider-hosted tracks
+
+`ResolvedPlayback.subtitles` carries a stable ID, URL, language, label and
+`SubtitleFormat` (WebVTT by default, or SRT). Media3 receives the corresponding
+MIME type and playback headers. The shared track picker, exact-track resume and
+next-episode language selection apply to both formats.
+
+Cinejoy supplies French and English tracks from Wing's episode-scoped subtitle
+endpoint. These use the same hosted-track path as 123Movies, with SRT declared
+explicitly. The verified IMDb identity also enables the existing online search.

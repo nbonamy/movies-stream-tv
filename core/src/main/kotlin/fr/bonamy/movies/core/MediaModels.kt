@@ -23,8 +23,11 @@ data class ResolvedPlayback(
     val subtitles: List<PlaybackSubtitle> = emptyList(),
 )
 
-/** Provider-hosted WebVTT tracks; requests inherit the playback headers. IDs survive URL refreshes. */
-data class PlaybackSubtitle(val id: String, val url: String, val language: String, val label: String)
+/** Provider-hosted text tracks; requests inherit the playback headers. IDs survive URL refreshes. */
+data class PlaybackSubtitle(val id: String, val url: String, val language: String, val label: String,
+    val format: SubtitleFormat = SubtitleFormat.WEBVTT)
+
+enum class SubtitleFormat(val mimeType: String) { WEBVTT("text/vtt"), SRT("application/x-subrip") }
 
 enum class MediaFormat(val mimeType: String) { HLS("application/x-mpegURL"), MP4("video/mp4") }
 

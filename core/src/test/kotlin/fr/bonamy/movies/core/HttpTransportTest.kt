@@ -33,4 +33,22 @@ class HttpTransportTest {
             assertEquals("https://player.example/", redirected.getHeader("Referer"))
         }
     }
+    @Test fun postsBinaryEnvelopeWithBoundsAndNeverForwardsItOnRedirect() {
+        MockWebServer().use { server ->
+            val transport = HttpTransport(allowLoopback = true)
+            val body = byteArrayOf(0, 2, -1, 32)
+            server.enqueue(MockResponse().setBody("reply"))
+            assertEquals("reply", transport.postBytes(server.url("/g"), body).toString(Charsets.UTF_8))
+            val request = server.takeRequest()
+            assertEquals("POST", request.method)
+            assertEquals("text/plain;charset=UTF-8", request.getHeader("Content-Type"))
+            assertArrayEquals(body, request.body.readByteArray())
+            server.enqueue(MockResponse().setResponseCode(307).setHeader("Location", "/other"))
+            assertThrows(IOException::class.java) { transport.postBytes(server.url("/g"), body) }
+            assertEquals(2, server.requestCount)
+            server.enqueue(MockResponse().setChunkedBody("a".repeat(33), 8))
+            assertThrows(IOException::class.java) { transport.postBytes(server.url("/g"), body, limit = 32) }
+        }
+    }
+
 }

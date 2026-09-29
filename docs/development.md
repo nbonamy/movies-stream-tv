@@ -63,7 +63,7 @@ make deploy-emulator ANDROID_EMULATOR_DEVICE=EMULATOR_SERIAL
 
 - [Agent/contributor workflow](../AGENTS.md)
 - [Site interfaces and ownership](multi-site-design.md)
-- [Kopoti](kopoti.md) · [123Movies](123movies.md)
+- [Kopoti](kopoti.md) · [123Movies](123movies.md) · [Cinejoy](cinejoy.md)
 - [TV browsing](tv-browsing.md) · [Resume](resume-playback.md) · [Subtitles](subtitles.md)
 - [UI design reference](mediastation-ui.md)
 

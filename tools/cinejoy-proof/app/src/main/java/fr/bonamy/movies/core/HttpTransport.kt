@@ -24,15 +24,7 @@ internal class HttpTransport(http: OkHttpClient = defaultClient(), private val a
     fun text(url: HttpUrl, referer: String): String = text(url, mapOf("Referer" to referer))
     fun text(url: HttpUrl, headers: Map<String, String> = emptyMap()): String = bytes(url, headers).toString(Charsets.UTF_8)
     fun bytes(url: HttpUrl, headers: Map<String, String> = emptyMap(), limit: Int = 8 * 1024 * 1024,
-        redirectAllowed: (HttpUrl) -> Boolean = { true }): ByteArray = request(url, headers, limit, redirectAllowed, null)
-
-    /** Binary envelope POST. Reject redirects instead of forwarding an encrypted body to another endpoint. */
-    fun postBytes(url: HttpUrl, body: ByteArray, headers: Map<String, String> = emptyMap(),
-        limit: Int = 1024 * 1024): ByteArray = request(url, headers, limit, { false }, body)
-
-    private fun request(url: HttpUrl, headers: Map<String, String>, limit: Int,
-        redirectAllowed: (HttpUrl) -> Boolean, postBody: ByteArray?): ByteArray {
-        require(limit > 0 && (postBody == null || postBody.size <= 1024 * 1024))
+        redirectAllowed: (HttpUrl) -> Boolean = { true }, postBody: ByteArray? = null): ByteArray {
         var target = url
         var requestHeaders = headers
         repeat(6) {
