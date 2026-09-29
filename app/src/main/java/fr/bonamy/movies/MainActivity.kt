@@ -50,7 +50,7 @@ import androidx.media3.ui.PlayerView
 import fr.bonamy.movies.core.Title
 import fr.bonamy.movies.core.MediaType
 import fr.bonamy.movies.core.PlayableRef
-import fr.bonamy.movies.core.SearchScope
+import fr.bonamy.movies.core.UniversalSearch
 import fr.bonamy.movies.core.StreamingSite
 import fr.bonamy.movies.core.CatalogRequest
 import fr.bonamy.movies.core.CatalogBrowser
@@ -115,6 +115,12 @@ class MainActivity : ComponentActivity() {
     private lateinit var searchBar: SearchBar
     private var searchQuery = ""
     private var searchJob: Job? = null
+    private val universalSearch = UniversalSearch(sites.sites)
+    private lateinit var searchResults: SearchResultsView
+    private lateinit var searchStatus: TextView
+    private var universalSearchJob: Job? = null
+    private val searchPageJobs = mutableMapOf<String, Job>()
+    private var searching = false
     private lateinit var remoteSearch: RemoteSearchController
     private lateinit var searchPanel: LinearLayout
     private lateinit var detailOverlay: FrameLayout
@@ -210,6 +216,9 @@ class MainActivity : ComponentActivity() {
                     catalogJob?.cancel()
                     ++catalogGeneration
                     catalogBrowser.invalidate()
+                    cancelUniversalSearch()
+                    detailJob?.cancel()
+                    detailSession.invalidate()
                     searchJob = lifecycleScope.launch {
                         kotlinx.coroutines.delay(600)
                         search(submitted = false)
@@ -296,6 +305,18 @@ class MainActivity : ComponentActivity() {
         })
         movieGrid.adapter = ConcatAdapter(resumeSection, HomeSectionAdapter(catalogHeader), movieCards)
         content.addView(movieGrid, LinearLayout.LayoutParams(-1, 0, 1f))
+        searchStatus = text("", 14f, muted).apply { visibility = View.GONE }
+        content.addView(searchStatus, LinearLayout.LayoutParams(-1, -2))
+        searchResults = SearchResultsView(this, image = { url, view ->
+            images.load(url, view) { bitmap -> if (bitmap != null) view.setImageBitmap(bitmap) }
+        }, select = { title, card ->
+            selectedMovieCard = card
+            showDetail(title)
+        }, loadMore = ::loadSearchPage).apply { visibility = View.GONE }
+        content.addView(searchResults, LinearLayout.LayoutParams(-1, 0, 1f))
+        lifecycleScope.launch {
+            universalSearch.rows.collect { rows -> searchResults.submit(rows) }
+        }
 
     }
 
@@ -346,6 +367,7 @@ class MainActivity : ComponentActivity() {
         remoteSearch.start()
         searchPanel.visibility = View.VISIBLE
         refreshContinueWatching()
+        if (!searching) search(submitted = false)
         searchBar.requestFocus()
     }
 
@@ -364,7 +386,7 @@ class MainActivity : ComponentActivity() {
         searchQuery = query
         searchJob?.cancel()
         search()
-        movieGrid.requestFocus()
+        focusCatalogStart()
     }
 
     private fun showSectionMenu(site: StreamingSite = activeSite) {
@@ -402,6 +424,11 @@ class MainActivity : ComponentActivity() {
 
     private fun loadLatest() {
         searchJob?.cancel()
+        cancelUniversalSearch()
+        searching = false
+        searchResults.visibility = View.GONE
+        searchStatus.visibility = View.GONE
+        movieGrid.visibility = View.VISIBLE
         searchPanel.visibility = View.GONE
         catalogQuery = null
         breadcrumb.text = "${activeSite.descriptor.name} / ${catalogSection.title}"
@@ -412,17 +439,38 @@ class MainActivity : ComponentActivity() {
         loadCatalogPage()
     }
 
-    private val searchLabel: String
-        get() = if (activeSite.descriptor.searchScope == SearchScope.SITE) activeSite.descriptor.name else catalogSection.title
+    private val searchLabel: String get() = "All sites"
+
+    private fun cancelUniversalSearch() {
+        searchResults.cancelPendingFocus()
+        universalSearchJob?.cancel()
+        searchPageJobs.values.forEach { it.cancel() }
+        searchPageJobs.clear()
+        universalSearch.invalidate()
+    }
+
+    private fun loadSearchPage(siteId: String) {
+        if (!searching || searchJob?.isActive == true || searchPageJobs[siteId]?.isActive == true) return
+        searchPageJobs[siteId] = lifecycleScope.launch { universalSearch.loadNext(siteId) }
+    }
 
     private fun search(submitted: Boolean = true) {
-        val query = searchQuery.trim().takeIf { it.isNotEmpty() }
-        catalogQuery = query
-        breadcrumb.text = if (query != null && activeSite.descriptor.searchScope == SearchScope.SITE)
-            "${activeSite.descriptor.name} / Search"
-        else "${activeSite.descriptor.name} / ${catalogSection.title}" + if (query == null) "" else " / Search"
-        heading.text = if (query == null) catalogSection.title else "Results for “$query”"
-        loadCatalogPage()
+        val query = searchQuery.trim()
+        cancelUniversalSearch()
+        catalogJob?.cancel()
+        ++catalogGeneration
+        detailJob?.cancel()
+        detailSession.invalidate()
+        searching = true
+        movieGrid.visibility = View.GONE
+        searchResults.visibility = View.VISIBLE
+        searchStatus.text = if (query.isBlank()) "Search movies and TV shows across all sites" else ""
+        searchStatus.visibility = if (query.isBlank()) View.VISIBLE else View.GONE
+        breadcrumb.text = "All sites / Search"
+        universalSearch.reset(query)
+        universalSearchJob = lifecycleScope.launch {
+            sites.sites.forEach { site -> launch { universalSearch.loadNext(site.descriptor.id) } }
+        }
         // Editing updates results without submitting or changing keyboard focus.
         if (submitted) {
             (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
@@ -431,6 +479,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadCatalogPage(append: Boolean = false) {
+        if (searching) return
         if (append && !catalogBrowser.canLoadMore) return
         catalogJob?.cancel()
         val generation = ++catalogGeneration
@@ -474,6 +523,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun focusCatalogStart() {
+        if (searching) {
+            searchResults.focusResults()
+            return
+        }
         if (resumeSection.visible && resumeGrid.getChildAt(0)?.requestFocus() == true) return
         movieGrid.findViewHolderForAdapterPosition(catalogOffset)?.itemView?.requestFocus()
     }
@@ -515,13 +568,14 @@ class MainActivity : ComponentActivity() {
             try {
                 val detail = site.details(movie)
                 require(detail.ref == movie.ref) { "Site returned a different title" }
-                if (detailSession.isCurrent(ticket) && site === activeSite) renderDetail(detail)
+                if (detailSession.isCurrent(ticket)) renderDetail(detail)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 if (detailSession.isCurrent(ticket)) {
-                    status.text = "Could not load title details. Select the title to retry."
-                    status.visibility = View.VISIBLE
+                    val message = if (searching) searchStatus else status
+                    message.text = "Could not load title details. Select the title to retry."
+                    message.visibility = View.VISIBLE
                 }
             }
         }
@@ -1239,7 +1293,7 @@ class MainActivity : ComponentActivity() {
                 detailOverlay.visibility = View.GONE
                 gallery.visibility = View.VISIBLE
                 refreshContinueWatching()
-                selectedMovieCard?.requestFocus()
+                if (selectedMovieCard?.requestFocus() != true) focusCatalogStart()
             }
             searchPanel.visibility == View.VISIBLE -> loadLatest()
             else -> super.onBackPressed()
@@ -1258,6 +1312,13 @@ class MainActivity : ComponentActivity() {
     // Activity's public key-dispatch hook inherits an AndroidX internal annotation.
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
+            gallery.visibility == View.VISIBLE && searching && searchResults.hasFocus() &&
+            searchResults.selectedPosition == 0) {
+            searchResults.cancelPendingFocus()
+            searchBar.requestFocus()
+            return true
+        }
         if (event.action == KeyEvent.ACTION_DOWN && gallery.visibility == View.VISIBLE && movieGrid.hasFocus()) {
             val position = movieGrid.focusedChild?.let { movieGrid.getChildAdapterPosition(it) - catalogOffset }
             if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP) {

@@ -1,8 +1,8 @@
 # Using Movies Stream
 
-- Use the **hamburger menu** to switch between the selected site’s **sections** and other registered sites. Search follows the selected site’s scope (all of Kopoti or the current Vidbox section); edits are debounced without dismissing the keyboard.
-- Open **Search** and scan the QR code to search from your phone. Use the same network and keep Movies Stream open on the TV. The phone mini site sends your query to the selected site and its current section; results appear on the TV. The address below the QR code also works in a browser.
-- Keep navigating **Down** to load more titles automatically; there are no page buttons.
+- Use the **hamburger menu** to switch between the selected site’s **sections** and other registered sites. Search covers all registered sites and all their sections, regardless of the current site. Results appear in one horizontally scrolling row per site, with movies and TV together. Edits are debounced without dismissing the keyboard.
+- Open **Search** and scan the QR code to search from your phone. Use the same network and keep Movies Stream open on the TV. The phone mini site searches all sites; results appear on the TV. The address below the QR code also works in a browser.
+- Keep navigating **Down** in home catalogs to load more titles automatically. In search, use **Up/Down** between sites and **Left/Right** within a site; approaching the end loads more results. Each row remembers its horizontal position. Unavailable sites offer a retry without clearing other results.
 - **Continue watching** appears above the popular catalog in each section, separately for each site. Select a card to resume directly; reopening a title from its details or episode list also restores its position.
 - Select a movie poster, then **Watch**. For TV shows, select **Episodes**, choose a season, then an episode thumbnail.
 - Press physical **Back** to close a picker, then hide playback controls, then leave the player.

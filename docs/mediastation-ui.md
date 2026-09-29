@@ -20,7 +20,7 @@ Colors, dimensions, font weights, and styles are imported from the corresponding
 - The details screen follows the approved full-screen artwork concept: provider backdrop (poster fallback), a dark left scrim, and a compact left column with type, larger title, year/rating, larger synopsis, and Watch/Episodes below. It retains MediaStation typography, colors, and action focus styling. Titles allow two lines, synopses five; the content can scroll if needed on smaller viewports. Missing metadata collapses without leaving a separator. No separate poster or library-management actions are rendered.
 - `DialogUtils` changes package and theme lookup, and omits the unused legacy builder. Bottom positioning, selected/focused styling, dim amount, scrolling, and entrance/dismissal animations are preserved.
 - Android 26–27 uses `textStyle="bold"` for the action label; Android 28+ retains MediaStation's original font-weight style.
-- Search binds Vidbox movie results to the gallery. It uses the same native search widget, input background, font, and speech-orb colors as Music.
+- Universal search uses native Leanback vertical/horizontal grids, one row per site, with the existing MediaStation cards. It uses the same native search widget, input background, font, and speech-orb colors as Music.
 
 ## Playback behavior
 
@@ -43,4 +43,4 @@ and mini-site styles are reused for phone search. The server lives in `:core`
 for socket-level tests; Android lifecycle and QR display live in `:app`.
 The Movies adaptation includes only search, uses ports 8070–8079 to coexist
 with Music, and stops listening when the activity is no longer visible.
-The mini site has Movies branding and searches the mode selected on the TV.
+The mini site has Movies branding and searches all registered sites.

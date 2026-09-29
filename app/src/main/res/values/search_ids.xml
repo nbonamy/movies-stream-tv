@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Stable child ID lets Leanback restore each recycled row's horizontal state. -->
+    <item name="search_site_titles" type="id" />
+</resources>

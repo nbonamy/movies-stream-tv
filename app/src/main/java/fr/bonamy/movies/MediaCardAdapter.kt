@@ -34,6 +34,7 @@ internal class MediaCardAdapter(
         notifyItemRangeRemoved(0, size)
     }
     fun append(cards: List<MediaCard>) {
+        if (cards.isEmpty()) return
         val start = items.size
         items.addAll(cards)
         notifyItemRangeInserted(start, cards.size)

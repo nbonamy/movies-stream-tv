@@ -10,7 +10,8 @@ the same media type; section identity is independent of playback identity.
 | --- | --- |
 | `StreamingSite` | Site sections, catalogs, search, title details, source discovery/defaults, resolution, optional subtitle metadata |
 | `SeriesCatalog` | Seasons and episodes; absent on movie-only sites |
-| `CatalogBrowser` | Current site/query, opaque continuation, deduplication, stale-result rejection |
+| `CatalogBrowser` | One site/section/query, opaque continuation, deduplication, stale-result rejection |
+| `UniversalSearch` | Concurrent cross-site search, section aggregation, independent row pagination and retries |
 | `sites/vidbox` | Vidbox requests, parsing, TMDB identity mapping and numbered pagination |
 | `sites/kopoti` | Category pagination, unified search, HTML details and ShareCloudy source discovery |
 | `sites/movies123` | Movie/season catalogs, unified search, season grouping and opaque page/episode identities |
@@ -72,19 +73,36 @@ parsing behind `browse`; the UI never falls back to searching Vidbox.
 `SiteDescriptor.searchScope` declares section-scoped search (Vidbox, the default)
 or site-wide search (Kopoti). Site-wide search may return titles from any declared
 section, with their actual `sectionId` and matching playback type. Home browsing
-still requires every result to belong to the requested section. Site-wide search
-uses the site name in the search prompt and breadcrumb.
+still requires every result to belong to the requested section. Universal search uses the site-wide scope to avoid duplicate requests.
 
 `CatalogPage.next` is an opaque token scoped to the site, section and query.
 Null means the end. The UI appends as remote focus approaches the bottom, keeping
 focus and existing cards. It knows nothing about page numbers. Vidbox owns its
 numbered pages and 500-page limit.
 
+### Universal search
+
+`UniversalSearch` coordinates a query across every registered site. It searches
+site-wide adapters once and section-scoped adapters once per declared section.
+Each request uses its own `CatalogBrowser` and opaque continuation. Results are
+deduplicated by site-qualified title identity within each site; copies hosted by
+different sites stay separate. New adapters participate through their existing
+search scope and sections, without Activity changes.
+
+The native search screen uses Leanback vertical/horizontal grids: one row per
+site, movies and TV together. Site order stays fixed while results arrive
+independently. Navigating right appends that site's next pages. Failures remain
+local to the row; retrying a partially failed site requests only failed sections.
+Each row retains focus and horizontal position. Opening a result uses its owning
+site for details and playback, without changing the home browsing site.
+
 Search edits debounce for 600 ms. Editing immediately invalidates older work;
 automatic result refreshes preserve keyboard focus. Explicit submission hides
-the keyboard. Site/section changes cancel pending work and clear search and pages.
-Captured site references and request generations prevent late responses from
-replacing a newer screen or playback session.
+the keyboard. Phone and voice search use the same universal query. A blank query
+shows a prompt. Back from details restores the result card; Back from search
+returns to the current home catalog. Site/section changes cancel pending work
+and clear search and pages. Captured request generations prevent late responses
+from replacing a newer screen or playback session.
 
 ## Hamburger menu
 
@@ -159,3 +177,15 @@ Sections control browsing, labels, search and continuation. `Title.type`,
 `PlayableRef` and `SeriesCatalog` still control standalone versus episode
 playback. Episode auto-binging uses those contracts, never section IDs or
 display titles.
+
+## Universal search verification
+
+Core tests cover site-wide versus section-scoped queries, independent slow/failing
+sites, retrying only failed sections, per-section cursors, cancellation on edits,
+and duplicate titles appearing in multiple sections. The emulator D-pad test
+covers loading-to-results focus, horizontal scrolling, appending without losing
+focus, returning to a row, and selecting a title with its owning site identity.
+
+Live emulator checks with “Alien” returned multiple results in Vidbox, Kopoti and
+123Movies. Opening a 123Movies result while browsing Vidbox loaded its details;
+Back restored the selected search card. The TV was not deployed or operated.

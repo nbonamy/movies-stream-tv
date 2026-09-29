@@ -6,7 +6,7 @@ from Vidbox, Kopoti and 123Movies.
 ## Features
 
 - **Catalog browsing** — poster galleries, title details, ratings and infinite scrolling.
-- **Search** — search on the TV, or scan a QR code and type from a phone on the same network.
+- **Universal search** — search all sites at once, with a horizontal results row for each site. Type on the TV or scan a QR code and search from a phone on the same network.
 - **TV shows** — season selection and episode browsing with thumbnails where available.
 - **Resume playback** — Continue Watching lists for movies and TV shows, with progress saved separately for each site.
 - **Automatic next episode** — continues into the next season when available; the player closes at the end of a movie or the final listed episode.
