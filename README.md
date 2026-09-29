@@ -86,4 +86,10 @@ The [multi-site architecture](docs/multi-site-design.md) describes the shared
 interfaces; [Kopoti](docs/kopoti.md) and [123Movies](docs/123movies.md) and [Cinejoy](docs/cinejoy.md) document
 individual integrations.
 
+## License
+
+Copyright 2026 Nicolas Bonamy.
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
+
 The bundled Lato font is distributed under the [SIL Open Font License](licenses/Lato-OFL.txt).
