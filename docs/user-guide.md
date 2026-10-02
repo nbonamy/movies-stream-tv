@@ -4,8 +4,12 @@
 - Open **Search** and scan the QR code to search from your phone. Use the same network and keep Movies Stream open on the TV. The phone mini site searches all sites; results appear on the TV. The address below the QR code also works in a browser.
 - Keep navigating **Down** in home catalogs to load more titles automatically. In search, use **Up/Down** between sites and **Left/Right** within a site; approaching the end loads more results. Each row remembers its horizontal position. Unavailable sites offer a retry without clearing other results.
 - **Continue watching** mixes movies and TV episodes from all sites in one row above every home catalog, most recently watched first. Cards identify their original site. Select a card to resume directly, or long-press OK/Select and choose Remove to clear its saved progress; reopening a title from its details or episode list also restores its position.
+- Long-press a catalog, search-result or episode card and choose **Save for later** to add it to Continue watching at 0:00. A series starts with its first episode; existing progress is preserved.
+- After more than 95% of a TV episode, Continue watching points to the next episode at 0:00, including across seasons.
 - Select a movie poster, then **Watch**. For TV shows, select **Episodes**, choose a season, then an episode thumbnail.
 - In the final 30 seconds of an episode, **Next episode** appears at the bottom right with focus. Press **OK** to advance or **Back** to dismiss it. It appears only when another episode is available.
+- In search, **Back** returns to the home catalog, including when the keyboard is open.
+- On the home catalog, **Back** scrolls to the top and focuses the menu. Press **Back** again to exit; if already at the top, Back exits immediately.
 - Press physical **Back** to close a picker, then hide playback controls, then leave the player.
 - Press **Up** during playback to focus **Subtitles**. Move **Right** through **Quality** and **Source**. Focus is indicated by MediaStation's white underline.
 - Open **Source** to switch servers. The app starts on Vidbox's **Max** default and remembers the selected available source separately for each site.

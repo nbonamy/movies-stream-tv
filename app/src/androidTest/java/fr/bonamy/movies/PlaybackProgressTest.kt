@@ -2,6 +2,7 @@ package fr.bonamy.movies
 
 import android.content.Context
 import androidx.test.platform.app.InstrumentationRegistry
+import fr.bonamy.movies.core.Episode
 import fr.bonamy.movies.core.MediaType
 import fr.bonamy.movies.core.Title
 import fr.bonamy.movies.core.PlayableRef
@@ -103,8 +104,90 @@ class PlaybackProgressTest {
         assertEquals(120_000L, PlaybackProgress(preferences).position(target))
         assertNull(PlaybackProgress(preferences).subtitle(target))
         store.save(show, target, "Second", "", 900_000, 900_000, ended = true, subtitle = choices.first())
+        store.advance(store.bookmark(target)!!, null) // Final listed episode.
         assertNull(PlaybackProgress(preferences).subtitle(target))
     }
+    @Test fun retainsCompletedEpisodeUntilItsSuccessorCanBeResolved() {
+        val target = PlayableRef(show.ref, "2/3", 2, 3)
+        val store = PlaybackProgress(preferences)
+        store.save(show, target, "Third", "still", 500_000, 1_000_000,
+            subtitle = SubtitleSelection.Embedded("fr", "old-track", "French", 0))
+        store.save(show, target, "Third", "still", 960_000, 1_000_000,
+            subtitle = SubtitleSelection.Embedded("fr", "old-track", "French", 0))
+        val reopened = PlaybackProgress(preferences)
+        assertEquals("A series must survive the completion threshold until next-episode lookup succeeds",
+            listOf(target), reopened.list().map { it.target })
+        assertEquals("A completed episode must not resume in the credits", 0L, reopened.position(target))
+    }
+
+    @Test fun explicitZeroPositionEntriesSurviveRestartShortPlaybackAndFailedLoadsWithoutResettingProgress() {
+        val store = PlaybackProgress(preferences)
+        val film = PlayableRef(movie.ref)
+        val episode = PlayableRef(show.ref, "opaque-first", 1, 1)
+        assertTrue(store.queue(movie, film, null, "poster"))
+        assertTrue(store.queue(show, episode, "Pilot", "still"))
+        val reopened = PlaybackProgress(preferences)
+        assertEquals(setOf(film, episode), reopened.list().map { it.target }.toSet())
+        assertTrue(reopened.list().all { it.position == 0L && it.queued })
+        reopened.save(show, episode, "Pilot", "still", 0, -1)
+        reopened.save(show, episode, "Pilot", "still", 10_000, 900_000)
+        assertTrue(PlaybackProgress(preferences).bookmark(episode)!!.queued)
+        reopened.save(show, episode, "Pilot", "still", 120_000, 900_000)
+        assertFalse(reopened.queue(show, episode, "Pilot", "still"))
+        assertEquals(120_000L, PlaybackProgress(preferences).position(episode))
+        assertFalse(reopened.bookmark(episode)!!.queued)
+        reopened.remove(film)
+        assertNull(PlaybackProgress(preferences).bookmark(film))
+    }
+
+    @Test fun completionQueuesNextSeasonAtZeroCarriesLanguageAndDoesNotRecreateTheCreditsEntry() {
+        val store = PlaybackProgress(preferences)
+        val current = PlayableRef(show.ref, "season-two/finale", 2, 8)
+        val next = Episode(PlayableRef(show.ref, "season-three/premiere", 3, 1), "Premiere", "", "next-still")
+        val subtitle = SubtitleSelection.Embedded("fr", "episode-eight-track", "French", 0)
+        store.save(show, current, "Finale", "old-still", 960_000, 1_000_000, subtitle = subtitle)
+        val pending = PlaybackProgress(preferences).bookmark(current)!!
+        assertTrue(pending.awaitingNext)
+        assertTrue(store.advance(pending, next))
+        // Pausing, release and periodic saves in the old episode must all preserve the queue.
+        for (position in listOf(970_000L, 990_000L, 1_000_000L))
+            store.save(show, current, "Finale", "old-still", position, 1_000_000, subtitle = subtitle)
+        val queued = PlaybackProgress(preferences).list().single()
+        assertEquals(next.target, queued.target)
+        assertEquals("Premiere", queued.episodeName)
+        assertEquals("next-still", queued.artwork)
+        assertEquals(0L, queued.position)
+        assertEquals(SubtitleSelection.Language("fr"), queued.subtitle)
+        store.save(show, next.target, next.name, next.still, 1000, 900_000, subtitle = queued.subtitle)
+        assertEquals(next.target, PlaybackProgress(preferences).list().single().target)
+        store.save(show, next.target, next.name, next.still, 150_000, 900_000, subtitle = queued.subtitle)
+        assertEquals(150_000L, PlaybackProgress(preferences).position(next.target))
+    }
+
+    @Test fun staleContinuationCannotUndoRemovalOrSeekingBackAndFinalEpisodeClearsTheEntry() {
+        val store = PlaybackProgress(preferences)
+        val current = PlayableRef(show.ref, "2/3", 2, 3)
+        val next = Episode(PlayableRef(show.ref, "2/4", 2, 4), "Next", "", "")
+        fun complete(): PlaybackBookmark {
+            store.save(show, current, "Third", "", 990_000, 1_000_000)
+            return store.bookmark(current)!!
+        }
+        val removed = complete()
+        store.remove(current)
+        assertFalse(store.advance(removed, next))
+        assertTrue(store.list().isEmpty())
+        val rewound = complete()
+        store.save(show, current, "Third", "", 500_000, 1_000_000)
+        assertFalse(store.advance(rewound, next))
+        assertEquals(500_000L, store.position(current))
+        assertTrue(store.advance(complete(), next))
+        store.save(show, current, "Third", "", 600_000, 1_000_000)
+        assertNull(store.bookmark(next.target))
+        assertEquals(600_000L, store.position(current))
+        assertTrue(store.advance(complete(), null))
+        assertTrue(PlaybackProgress(preferences).list().isEmpty())
+    }
+
     @Test fun keepsIdenticalIdsSeparateAcrossSitesAndMigratesLegacyVidboxOnce() {
         val legacy = JSONObject().put("id", "55").put("type", "TV").put("title", "Legacy show")
             .put("season", 2).put("episode", 3).put("episodeName", "Third").put("artwork", "still")

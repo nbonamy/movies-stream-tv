@@ -20,6 +20,8 @@ internal class NextEpisodePrompt(
     private var load: (suspend () -> Episode?)? = null
     private var lookup: Deferred<Result<Episode?>>? = null
     private var candidate: Episode? = null
+    var resolved: Result<Episode?>? = null
+        private set
     private var dismissed = false
 
     init {
@@ -38,7 +40,7 @@ internal class NextEpisodePrompt(
             val next = load()
             currentCoroutineContext().ensureActive()
             candidate = next
-            Result.success(next)
+            Result.success(next).also { resolved = it }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -83,6 +85,7 @@ internal class NextEpisodePrompt(
         lookup = null
         load = null
         candidate = null
+        resolved = null
         dismissed = false
         hide()
     }

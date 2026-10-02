@@ -24,6 +24,7 @@ internal class SearchResultsView(
     private val image: (String, ImageView) -> Unit,
     private val select: (Title, View) -> Unit,
     private val loadMore: (String) -> Unit,
+    private val longPress: ((Title, View) -> Unit)? = null,
 ) : VerticalGridView(context) {
     private var rows = emptyList<SearchRow>()
     private var focusWhenReady = false
@@ -104,7 +105,9 @@ internal class SearchResultsView(
         private var boundItems = emptyList<Title>()
         private val cards = MediaCardAdapter(image = image, select = { index, view ->
             row?.items?.getOrNull(index)?.let { select(it, view) }
-        }, focus = { index ->
+        }, longPress = longPress?.let { action -> { index, view ->
+            row?.items?.getOrNull(index)?.let { action(it, view) }
+        } }, focus = { index ->
             row?.let { if (index >= it.items.size - 4 && it.canLoadMore && !it.loading && !it.failed) loadMore(it.site.id) }
         })
         private val action = TextView(context).apply {

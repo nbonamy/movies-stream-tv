@@ -29,9 +29,34 @@ to the device; uninstalling or clearing app data removes it.
 
 Save every five seconds and on pause, seek, player release, and activity stop.
 Backgrounding pauses playback. An unresolved or failed stream cannot overwrite
-an existing bookmark. The MediaStation rules apply: at most 30 seconds is not
-resumable, and more than 95% or a completed player removes the bookmark. Reopening
-such a title starts at the beginning.
+an existing bookmark. Ordinary watched progress becomes resumable after 30 seconds.
+More than 95% or actual completion removes a movie's bookmark. For TV, it queues
+the next episode at **0:00**, including across seasons. A final listed episode
+removes its bookmark without queuing another.
+
+The selected subtitle's language carries into the queued next episode. The current
+episode's file is never reused. Periodic saves in the previous episode's credits
+cannot overwrite the successor. Seeking back into that episode cancels its
+unstarted automatic successor and restores the current position.
+
+If episode lookup has not finished or fails, a durable **Next episode** entry
+survives player exit and app restart. Home retries the lookup; selecting the entry
+also retries it. Lookup failure does not mean end of series. Late results cannot
+recreate a removed entry or undo a newer playback position.
+
+## Save for later
+
+Long-press a catalog or search-result card and choose **Save for later**. Movies
+are added at 0:00. A series uses its first listed episode in playback order,
+skipping empty seasons; existing progress for that series is preserved. Episode
+cards offer the same action for that specific episode. Existing saved positions
+are never reset by this action.
+
+Explicitly saved and automatically queued entries remain in Continue watching
+until removed, completed or replaced by watched progress. Starting one and stopping
+within the first 30 seconds keeps its 0:00 entry. After 30 seconds the usual position
+and subtitle checkpoints take over. These entries do not require a media duration
+or a resolved stream URL to be saved.
 
 ## End of playback
 
@@ -49,20 +74,22 @@ leaving or replacing the player cancels it. Stream URLs are still resolved fresh
 only when advancing. An early advance completes the previous bookmark and carries
 the same source preference and subtitle language as end-of-stream continuation.
 
-A completed movie closes the player. A completed episode is removed from Continue
-watching and the next episode starts at the beginning, even if it has an older
-bookmark. The selected source is retained when available for the next episode.
+A completed movie closes the player. A completed episode is replaced in Continue
+watching by its successor at 0:00, and that episode starts at the beginning, even
+if it has an older bookmark. The selected source is retained when available for the next episode.
 Navigation follows the site's episode and season order, skipping empty seasons.
 After the final listed episode, the player closes. Back returns to the original
 home/details/episode screen even after several automatic transitions. Leaving the
-player cancels pending episode lookup; a lookup failure offers Retry.
+player cancels its playback lookup; a lookup failure offers Retry. The separate
+bookmark lookup keeps the continuation durable when playback stops.
 
 ## Verification
 
 Android instrumentation tests exercise real SharedPreferences serialization,
 independent site/movie/episode keys, legacy migration, opaque IDs, site preferences,
 universal ordering, targeted removal, incomplete stream
-metadata, completion thresholds, and malformed records. Build the app and test
+metadata, completion thresholds, zero-position entries, pending transitions,
+subtitle-language carryover, stale lookup results and malformed records. Build the app and test
 APK with `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest`, install both
 on the emulator, and run:
 
@@ -100,3 +127,12 @@ S2E4 from the beginning. Dismissing the S2E4 prompt with Back still allowed
 end-of-stream continuation into S2E5. Instrumentation tests cover the 30-second
 boundary, focus, dismissal and seeking back, cancelled lookups, final episodes,
 lookup reuse and retry after failure.
+
+Save for later and near-completion continuation were verified on the emulator
+through the real catalog, search and episode-card actions. A movie and Reacher's
+first episode were saved at 0:00; saving Reacher again preserved existing progress.
+Cinejoy's Reacher S2E3 resumed with rendered video from three minutes after reopening.
+Stopping it at 96% queued S2E4 at 0:00; after reopening, that card played S2E4 from
+the beginning and survived stopping within 30 seconds. Original bookmarks were
+restored after verification. Persistence tests additionally cover cross-season
+queues, final episodes, failed/unprepared playback, removal and seek-back races.

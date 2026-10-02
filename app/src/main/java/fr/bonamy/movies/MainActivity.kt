@@ -29,6 +29,7 @@ import android.widget.ImageView
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
@@ -157,6 +158,8 @@ class MainActivity : ComponentActivity() {
     private var selectedEpisodeCard: View? = null
     private var returnToEpisodes = false
     private var browserDialog: Dialog? = null
+    private var bookmarkJob: Job? = null
+    private val continuationJobs = mutableMapOf<String, Job>()
     private var selectedMovieCard: View? = null
     private var currentSourceId: String? = null
     private var availableSources: List<PlaybackSource> = emptyList()
@@ -232,7 +235,9 @@ class MainActivity : ComponentActivity() {
                     searchJob?.cancel()
                     search()
                 }
-                override fun onKeyboardDismiss(query: String) { focusCatalogStart() }
+                override fun onKeyboardDismiss(query: String) {
+                    if (gallery.visibility == View.VISIBLE && searchPanel.visibility == View.VISIBLE) loadLatest()
+                }
             })
         }
         val searchRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -305,7 +310,7 @@ class MainActivity : ComponentActivity() {
             showDetail(catalogItems[index])
         }, focus = { index ->
             if (index >= catalogItems.size - catalogColumns * 2) loadCatalogPage(append = true)
-        })
+        }, longPress = { index, card -> showSaveForLaterMenu(catalogItems[index], card) })
         movieGrid.adapter = ConcatAdapter(resumeSection, HomeSectionAdapter(catalogHeader), movieCards)
         content.addView(movieGrid, LinearLayout.LayoutParams(-1, 0, 1f))
         searchStatus = text("", 14f, muted).apply { visibility = View.GONE }
@@ -315,7 +320,7 @@ class MainActivity : ComponentActivity() {
         }, select = { title, card ->
             selectedMovieCard = card
             showDetail(title)
-        }, loadMore = ::loadSearchPage).apply { visibility = View.GONE }
+        }, loadMore = ::loadSearchPage, longPress = { title, card -> showSaveForLaterMenu(title, card) }).apply { visibility = View.GONE }
         content.addView(searchResults, LinearLayout.LayoutParams(-1, 0, 1f))
         lifecycleScope.launch {
             universalSearch.rows.collect { rows -> searchResults.submit(rows) }
@@ -429,6 +434,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadLatest() {
+        (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
+            .hideSoftInputFromWindow(searchBar.windowToken, 0)
         searchJob?.cancel()
         cancelUniversalSearch()
         searching = false
@@ -540,12 +547,13 @@ class MainActivity : ComponentActivity() {
     private fun refreshContinueWatching(focusTarget: PlayableRef? = null) {
         val siteNames = sites.sites.associate { it.descriptor.id to it.descriptor.name }
         val items = playbackProgress.list().filter { it.target.siteId in siteNames }
-        resumeSection.visible = searchPanel.visibility != View.VISIBLE && items.isNotEmpty()
+        // Search hides the whole grid; keep its sections attached for the return to home.
+        resumeSection.visible = items.isNotEmpty()
         val cards = MediaCardAdapter(landscape = true, image = { url, view ->
             images.load(url, view) { bitmap -> if (bitmap != null) view.setImageBitmap(bitmap) }
         }, select = { index, _ ->
             val item = items[index]
-            openPlayer(item.movie, item.target, item.episodeName, item.artwork)
+            resumeBookmark(item)
         }, focus = {
             movieGrid.post { (movieGrid.layoutManager as GridLayoutManager).scrollToPositionWithOffset(0, 0) }
         }, longPress = { index, card ->
@@ -565,13 +573,16 @@ class MainActivity : ComponentActivity() {
                 }
         })
         cards.append(items.map { item ->
-            val title = playbackLabel(item.movie, item.target, item.episodeName)
+            val title = if (item.awaitingNext) "${item.movie.title} · Next episode"
+                else playbackLabel(item.movie, item.target, item.episodeName)
             val artwork = if (item.target.type == MediaType.MOVIE) item.movie.backdrop.ifBlank { item.artwork }
                 else item.artwork
             MediaCard(item.target, title, artwork,
-                (item.position.toDouble() / item.duration * 100).toInt(), siteNames[item.target.siteId])
+                if (item.duration > 0 && !item.awaitingNext) (item.position.toDouble() / item.duration * 100).toInt() else 0,
+                siteNames[item.target.siteId])
         })
         resumeGrid.adapter = cards
+        items.filter { it.awaitingNext }.forEach(::resolvePendingContinuation)
         if (focusTarget != null) {
             val index = items.indexOfFirst { it.target == focusTarget }.coerceAtLeast(0)
             movieGrid.scrollToPosition(0)
@@ -580,6 +591,123 @@ class MainActivity : ComponentActivity() {
                 if (resumeSection.visible) resumeGrid.post {
                     resumeGrid.findViewHolderForAdapterPosition(index)?.itemView?.requestFocus()
                 } else focusCatalogStart()
+            }
+        }
+    }
+
+    private fun showSaveForLaterMenu(title: Title, card: View, episode: Episode? = null) {
+        browserDialog?.dismiss()
+        browserDialog = DialogUtils.getDialogBuilder(this, episode?.name ?: title.title)
+            .setItems(arrayOf("Save for later")) { dialog, _ ->
+                dialog.dismiss()
+                saveForLater(title, card, episode)
+            }.create().also { dialog ->
+                dialog.setOnDismissListener { card.requestFocus() }
+                dialog.show()
+            }
+    }
+
+    private fun saveForLater(title: Title, card: View, episode: Episode?) {
+        val existing = if (episode == null) playbackProgress.list().any { it.movie.ref == title.ref }
+            else playbackProgress.bookmark(episode.target) != null
+        if (existing) {
+            Toast.makeText(this, "Already in Continue watching", Toast.LENGTH_SHORT).show()
+            return
+        }
+        fun save(target: PlayableRef, name: String?, artwork: String) {
+            playbackProgress.queue(title, target, name, artwork)
+            refreshContinueWatching()
+            card.requestFocus()
+            Toast.makeText(this, "Saved for later", Toast.LENGTH_SHORT).show()
+        }
+        if (episode != null) {
+            save(episode.target, episode.name, episode.still.ifBlank { title.backdrop.ifBlank { title.poster } })
+        } else if (title.type == MediaType.MOVIE) {
+            save(PlayableRef(title.ref), null, title.backdrop.ifBlank { title.poster })
+        } else {
+            bookmarkJob?.cancel()
+            val loading = DialogUtils.getDialogBuilder(this, title.title).setMessage("Finding first episode…").create()
+            browserDialog = loading
+            loading.setOnDismissListener { bookmarkJob?.cancel(); card.requestFocus() }
+            loading.show()
+            bookmarkJob = lifecycleScope.launch {
+                try {
+                    val series = requireNotNull(sites.get(title.siteId).series)
+                    var first: Episode? = null
+                    for (season in series.seasons(title.ref)) {
+                        require(season.ref.show == title.ref)
+                        first = series.episodes(season.ref).firstOrNull()
+                        if (first != null) break
+                    }
+                    currentCoroutineContext().ensureActive()
+                    val found = requireNotNull(first) { "No episodes available" }
+                    require(found.target.title == title.ref)
+                    if (browserDialog !== loading || !loading.isShowing) return@launch
+                    loading.setOnDismissListener(null)
+                    loading.dismiss()
+                    save(found.target, found.name, found.still.ifBlank { title.backdrop.ifBlank { title.poster } })
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    if (browserDialog === loading && loading.isShowing) {
+                        loading.dismiss()
+                        Toast.makeText(this@MainActivity, "Could not save this series. Please retry.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun resolveContinuation(item: PlaybackBookmark): PlaybackBookmark? {
+        val next = requireNotNull(sites.get(item.target.siteId).series).nextEpisode(item.target)
+        currentCoroutineContext().ensureActive()
+        playbackProgress.advance(item, next)
+        return next?.let { playbackProgress.bookmark(it.target) }?.takeIf { it.queuedFrom == item.target.key }
+    }
+
+    private fun resolvePendingContinuation(item: PlaybackBookmark) {
+        if (continuationJobs[item.target.key]?.isActive == true) return
+        continuationJobs[item.target.key] = lifecycleScope.launch {
+            try {
+                val next = resolveContinuation(item)
+                if (gallery.visibility == View.VISIBLE) refreshContinueWatching(
+                    if (resumeGrid.hasFocus()) next?.target ?: item.target else null)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // Keep the durable pending entry. Selecting it or reopening home retries lookup.
+            } finally {
+                if (continuationJobs[item.target.key] === currentCoroutineContext()[Job]) continuationJobs.remove(item.target.key)
+            }
+        }
+    }
+
+    private fun resumeBookmark(item: PlaybackBookmark) {
+        if (!item.awaitingNext) {
+            openPlayer(item.movie, item.target, item.episodeName, item.artwork)
+            return
+        }
+        continuationJobs.remove(item.target.key)?.cancel()
+        bookmarkJob?.cancel()
+        val loading = DialogUtils.getDialogBuilder(this, item.movie.title).setMessage("Finding next episode…").create()
+        browserDialog = loading
+        loading.setOnDismissListener { bookmarkJob?.cancel() }
+        loading.show()
+        bookmarkJob = lifecycleScope.launch {
+            try {
+                val next = resolveContinuation(item)
+                if (browserDialog !== loading || !loading.isShowing) return@launch
+                loading.setOnDismissListener(null)
+                loading.dismiss()
+                refreshContinueWatching()
+                if (next != null) openPlayer(next.movie, next.target, next.episodeName, next.artwork)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                if (browserDialog === loading && loading.isShowing) {
+                    loading.dismiss()
+                    Toast.makeText(this@MainActivity, "Could not find the next episode. Select the item to retry.", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -729,7 +857,7 @@ class MainActivity : ComponentActivity() {
                     selectedEpisodeCard = card
                     openPlayer(show, episode.target,
                         episode.name, episode.still.ifBlank { show.backdrop.ifBlank { show.poster } })
-                })
+                }, longPress = { index, card -> showSaveForLaterMenu(show, card, episodes[index]) })
                 grid.adapter = cards
                 cards.append(episodes.map { episode -> MediaCard(episode.target, episode.number?.let { "$it. ${episode.name}" } ?: episode.name,
                     episode.still.ifBlank { show.backdrop.ifBlank { show.poster } }) })
@@ -933,7 +1061,8 @@ class MainActivity : ComponentActivity() {
         require(next.target.title == target.title && next.target.key != target.key)
         val currentPlayer = player ?: return
         playbackProgress.save(title, target, currentEpisodeName, currentArtwork,
-            currentPlayer.currentPosition, currentPlayer.duration, ended = true)
+            currentPlayer.currentPosition, currentPlayer.duration, ended = true, subtitle = currentSubtitleSelection())
+        playbackProgress.bookmark(target)?.takeIf { it.awaitingNext }?.let { playbackProgress.advance(it, next) }
         playbackReady = false // Releasing this player must not recreate the completed bookmark.
         openPlayer(title, next.target, next.name,
             next.still.ifBlank { title.backdrop.ifBlank { title.poster } }, continuingSeries = true)
@@ -1317,6 +1446,21 @@ class MainActivity : ComponentActivity() {
         playbackProgress.save(movie, target, currentEpisodeName, currentArtwork,
             currentPlayer.currentPosition, currentPlayer.duration,
             currentPlayer.playbackState == Player.STATE_ENDED, currentSubtitleSelection())
+        val pending = playbackProgress.bookmark(target)?.takeIf { it.awaitingNext } ?: return
+        val resolved = nextEpisodePrompt.resolved
+        if (resolved?.isSuccess == true) playbackProgress.advance(pending, resolved.getOrNull())
+        else resolvePendingContinuation(pending)
+    }
+
+    private fun scrollHomeToTop(): Boolean {
+        if (!movieGrid.canScrollVertically(-1) && !resumeGrid.canScrollHorizontally(-1)) return false
+        movieGrid.stopScroll()
+        resumeGrid.stopScroll()
+        // Move focus out of the old row so RecyclerView cannot scroll it back into view.
+        gallery.findViewById<View>(R.id.menu).requestFocus()
+        (movieGrid.layoutManager as GridLayoutManager).scrollToPositionWithOffset(0, 0)
+        (resumeGrid.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(0, 0)
+        return true
     }
 
     @Deprecated("Android TV uses the physical Back button")
@@ -1345,6 +1489,7 @@ class MainActivity : ComponentActivity() {
                 if (selectedMovieCard?.requestFocus() != true) focusCatalogStart()
             }
             searchPanel.visibility == View.VISIBLE -> loadLatest()
+            scrollHomeToTop() -> Unit
             else -> super.onBackPressed()
         }
     }
