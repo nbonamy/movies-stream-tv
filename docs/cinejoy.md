@@ -108,4 +108,38 @@ A repeated Alien backward-seek check hit an Android emulator AAC decoder error
 That decoder failure is not claimed fixed.
 
 Temporary live probes are removed after verification. Original emulator
-preferences and bookmarks are restored. No physical-TV testing was performed.
+preferences and bookmarks are restored. The integration acceptance above used
+an emulator; the later physical-TV investigation is recorded below.
+
+### Halt and Catch Fire S1E1/S1E2 investigation — 2026-10-01
+
+Both episodes failed on the physical TV with Lisbon selected. The captured
+Media3 error was HTTP 502 while loading an HLS initialization chunk. The same
+episodes also failed in Cinejoy's own Safari player: E1 remained at 0:00 without
+a duration; E2 loaded a duration of 42:57 but remained at 0:00 with repeated
+HTTP 502 responses. Reacher S2E3 played in the same browser environment as a
+positive control.
+
+Fresh native requests through Wing's authenticated protocol returned:
+
+| Source | S1E1 and S1E2 result |
+| --- | --- |
+| Nebula | API 404: title not carried |
+| Lisbon | API 200 with HLS; E1's master returned 502. E2's 1080p initialization/media chunks and 720p/360p playlists returned 502. |
+| Solara | API 200 with HLS; media endpoint returned 403. |
+| Athens | API 404: empty mirror list |
+| Scout | API 500: upstream lookup failed with unexpected EOF |
+| Riga | API 500: upstream search queries refused |
+
+Scout and Riga were newly observed in the website's server list. They are not
+registered as supported app sources: no working native playback path was proven.
+Lisbon and Solara returned the same direct-playlist response shape handled by
+the extractor, without additional media-header fields or alternate streams.
+Changing Origin/Referer did not repair the failing requests. Lisbon's playlists
+exposed only its proxy URLs; Solara's media locator was opaque. No verified
+direct-origin fallback was available.
+
+This comparison found no app-side repair for these episodes at that time. It
+does not imply that the sources fail for every title, or that their availability
+will remain unchanged. No player/extractor change was made, and TV bookmarks and
+preferences were preserved. Temporary probes and resolved media URLs were removed.
