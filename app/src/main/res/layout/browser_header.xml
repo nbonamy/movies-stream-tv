@@ -1,47 +1,91 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
-	xmlns:tools="http://schemas.android.com/tools"
-	android:layout_width="match_parent"
-	android:layout_height="56dp"
-	android:background="@color/browser_header_background"
-	android:orientation="vertical"
-	android:paddingStart="36dp"
-	android:paddingEnd="36dp">
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="56dp"
+    android:background="@color/browser_header_background"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="36dp"
+    android:paddingEnd="36dp">
 
-	<ImageButton
-		android:id="@+id/menu"
-		android:layout_width="18dp"
-		android:layout_height="18dp"
-		android:layout_alignParentStart="true"
-		android:layout_centerVertical="true"
-		android:background="@drawable/menu_button_bg_selector"
-		android:padding="1dp"
-		android:scaleType="fitCenter"
-		android:src="@drawable/baseline_menu_36" />
+    <FrameLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1">
 
-	<TextView
-		android:id="@+id/breadcrumb"
-		android:layout_width="wrap_content"
-		android:layout_height="wrap_content"
-		android:layout_toEndOf="@id/menu"
-		android:layout_centerVertical="true"
-		android:layout_marginStart="10dp"
-		android:fontFamily="@font/theme"
-		android:textColor="#A8BDD8"
-		android:textSize="15sp"
-		tools:text="MediaStation / Library" />
+        <LinearLayout
+            android:id="@+id/menu"
+            android:layout_width="wrap_content"
+            android:layout_height="28dp"
+            android:layout_gravity="center_vertical"
+            android:background="@drawable/header_action_background"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp">
 
-	<ImageButton
-		android:id="@+id/search"
-		android:layout_width="24dp"
-		android:layout_height="24dp"
-		android:layout_alignParentEnd="true"
-		android:layout_centerVertical="true"
-		android:background="@drawable/menu_button_bg_selector"
-		android:contentDescription="@string/browser_search"
-		android:padding="2dp"
-		android:scaleType="fitCenter"
-		android:src="@drawable/baseline_search_24"
-		android:visibility="gone" />
+            <ImageView
+                android:id="@+id/menu_icon"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:duplicateParentState="true"
+                android:importantForAccessibility="no"
+                android:src="@drawable/baseline_menu_36"
+                android:tint="@color/header_action_foreground" />
 
-</RelativeLayout>
+            <TextView
+                android:id="@+id/breadcrumb"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:duplicateParentState="true"
+                android:ellipsize="end"
+                android:fontFamily="@font/theme"
+                android:importantForAccessibility="no"
+                android:maxLines="1"
+                android:textColor="@color/header_action_foreground"
+                android:textSize="15sp"
+                tools:text="Movies / Popular" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/search"
+        android:layout_width="wrap_content"
+        android:layout_height="28dp"
+        android:layout_marginStart="16dp"
+        android:background="@drawable/header_action_background"
+        android:clickable="true"
+        android:contentDescription="@string/browser_search"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/search_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="10dp"
+            android:duplicateParentState="true"
+            android:fontFamily="@font/theme"
+            android:importantForAccessibility="no"
+            android:text="@string/header_search_label"
+            android:textColor="@color/header_search_foreground"
+            android:textSize="15sp" />
+
+        <ImageView
+            android:id="@+id/search_icon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:duplicateParentState="true"
+            android:importantForAccessibility="no"
+            android:src="@drawable/baseline_search_24"
+            android:tint="@color/header_action_foreground" />
+    </LinearLayout>
+</LinearLayout>

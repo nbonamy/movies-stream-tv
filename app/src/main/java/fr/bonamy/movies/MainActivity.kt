@@ -26,7 +26,6 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ConcatAdapter
 import android.widget.ImageView
-import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -199,11 +198,11 @@ class MainActivity : ComponentActivity() {
         gallery.addView(header)
         breadcrumb = header.findViewById(R.id.breadcrumb)
         breadcrumb.text = "Movies / Popular"
-        header.findViewById<ImageButton>(R.id.menu).apply {
+        header.findViewById<View>(R.id.menu).apply {
             contentDescription = "Browse sections and sites"
             setOnClickListener { showSectionMenu() }
         }
-        header.findViewById<ImageButton>(R.id.search).apply {
+        header.findViewById<View>(R.id.search).apply {
             visibility = View.VISIBLE
             contentDescription = "Search movies"
             setOnClickListener { showSearch() }
@@ -447,7 +446,7 @@ class MainActivity : ComponentActivity() {
         breadcrumb.text = "${activeSite.descriptor.name} / ${catalogSection.title}"
         heading.text = catalogSection.title
         searchBar.title = searchLabel
-        root.findViewById<ImageButton>(R.id.search).contentDescription = "Search ${searchLabel.lowercase()}"
+        gallery.findViewById<View>(R.id.search).contentDescription = "Search ${searchLabel.lowercase()}"
         refreshContinueWatching()
         loadCatalogPage()
     }
@@ -821,7 +820,7 @@ class MainActivity : ComponentActivity() {
         episodeOverlay.addView(panel, FrameLayout.LayoutParams(-1, -1))
         val header = layoutInflater.inflate(R.layout.browser_header, panel, false)
         header.findViewById<TextView>(R.id.breadcrumb).text = "TV Shows / ${show.title}"
-        header.findViewById<ImageButton>(R.id.menu).apply {
+        header.findViewById<View>(R.id.menu).apply {
             contentDescription = "Browse sections and sites"
             setOnClickListener { showSectionMenu() }
         }

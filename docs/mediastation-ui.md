@@ -21,6 +21,7 @@ Colors, dimensions, font weights, and styles are imported from the corresponding
 - `DialogUtils` changes package and theme lookup, and omits the unused legacy builder. Bottom positioning, selected/focused styling, dim amount, scrolling, and entrance/dismissal animations are preserved.
 - Android 26–27 uses `textStyle="bold"` for the action label; Android 28+ retains MediaStation's original font-weight style.
 - Universal search uses native Leanback vertical/horizontal grids, one row per site, with the existing MediaStation cards. It uses the same native search widget, input background, font, and speech-orb colors as Music.
+- Header focus highlights the menu icon and current title together with a filled background and brighter foreground. The search action reveals a Search label to the left of its icon while focused; its reserved space keeps the header stable when focus moves.
 
 ## Playback behavior
 
