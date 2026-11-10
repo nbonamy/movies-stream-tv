@@ -42,12 +42,16 @@ internal class MaxExtractor(private val network: HttpTransport, private val maxO
         val playerConfig = JsonParser.parseString(MAX_PLAYER_CONFIG.find(playerPage)?.groupValues?.get(1)
             ?: throw IOException("Max did not return a stream configuration"))
             .asJsonObject
-        val apiUrl = if (target.type == MediaType.TV) {
+        val configuredApi = if (target.type == MediaType.TV) {
             playerConfig.string("streamBase").toHttpUrl().newBuilder()
                 .setQueryParameter("season", target.season.toString())
                 .setQueryParameter("episode", target.episode.toString())
                 .setQueryParameter("stream_urls", null).build()
         } else playerConfig.string("api").toHttpUrl()
+        val apiToken = playerConfig.get("apiToken")?.takeUnless { it.isJsonNull }?.asString?.takeIf(String::isNotBlank)
+        val apiUrl = configuredApi.newBuilder().apply {
+            apiToken?.let { setQueryParameter("api_token", it) }
+        }.build()
         check(network.accepts(apiUrl)) { "Max returned an unsafe stream API" }
         val streamResponse = JsonParser.parseString(network.text(apiUrl, referer = playerUrl.toString())).asJsonObject
         val encrypted = streamResponse.getAsJsonObject("data")?.string("stream_urls")
@@ -67,7 +71,7 @@ internal class MaxExtractor(private val network: HttpTransport, private val maxO
         streams.forEach { raw ->
             val candidate = runCatching { raw.toHttpUrl() }.getOrNull() ?: return@forEach
             if (!network.accepts(candidate)) return@forEach
-            val token = runCatching { maxToken(candidate) }.getOrNull() ?: return@forEach
+            val token = runCatching { maxToken(candidate, apiToken) }.getOrNull() ?: return@forEach
             val playlist = candidate.newBuilder().addQueryParameter("token", token).build()
             val body = runCatching { network.text(playlist, mediaHeaders) }.getOrNull() ?: return@forEach
             if (body.trimStart().startsWith("#EXTM3U")) return ResolvedPlayback(playlist.toString(), mediaHeaders,
@@ -77,13 +81,15 @@ internal class MaxExtractor(private val network: HttpTransport, private val maxO
         throw IOException("Max streams were unavailable")
     }
 
-    private fun maxToken(stream: HttpUrl): String {
+    private fun maxToken(stream: HttpUrl, apiToken: String?): String {
         val origin = stream.newBuilder().encodedPath("/").query(null).build()
         val cacheKey = origin.host
         synchronized(maxTokens) {
             maxTokens[cacheKey]?.takeIf { System.currentTimeMillis() - it.second < MAX_TOKEN_CACHE_MS }?.let { return it.first }
         }
-        val tokenUrl = origin.resolve("generate.php") ?: throw IOException("Max returned an invalid token service")
+        val tokenUrl = origin.resolve("generate.php")?.newBuilder()?.apply {
+            apiToken?.let { setQueryParameter("api_token", it) }
+        }?.build() ?: throw IOException("Max returned an invalid token service")
         var lastError: IOException? = null
         repeat(4) { attempt ->
             try {

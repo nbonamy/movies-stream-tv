@@ -9,6 +9,7 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
 
 internal class VidboxClient(
     private val http: OkHttpClient = HttpTransport.defaultClient(),
@@ -16,12 +17,14 @@ internal class VidboxClient(
     private val playerOrigin: HttpUrl = "https://vixsrc.to/".toHttpUrl(),
     private val alternativeOrigin: HttpUrl = "https://vidrock.net/".toHttpUrl(),
     private val maxOrigin: HttpUrl = "https://ythd.org/".toHttpUrl(),
+    private val xpassOrigin: HttpUrl = "https://play.xpass.top/".toHttpUrl(),
 ) {
-    private val network = HttpTransport(http, listOf(catalogOrigin, playerOrigin, alternativeOrigin, maxOrigin)
+    private val network = HttpTransport(http, listOf(catalogOrigin, playerOrigin, alternativeOrigin, maxOrigin, xpassOrigin)
         .any { it.host in listOf("localhost", "127.0.0.1") })
     private val max = MaxExtractor(network, maxOrigin)
     private val vidpro = VidproExtractor(network, playerOrigin)
     private val rock = VidRockExtractor(network, alternativeOrigin)
+    private val xpass = XpassExtractor(network, xpassOrigin)
 
     fun browse(type: MediaType, page: Int = 1, query: String? = null): VidboxPage =
         discover(type, page, query?.trim()?.takeIf(String::isNotEmpty))
@@ -32,8 +35,15 @@ internal class VidboxClient(
 
     fun sources(target: TmdbPlayback): List<PlaybackSource> {
         val alternatives = runCatching { rock.alternativeEntries(target) }.getOrDefault(emptyMap())
+        val nebula = try {
+            xpass.sources(target)
+        } catch (error: Exception) {
+            if (error is CancellationException || error is InterruptedException || Thread.currentThread().isInterrupted) throw error
+            emptyList()
+        }
         return buildList {
             addAll(BUILT_IN_SOURCES)
+            addAll(nebula)
             alternatives.forEach { (name, item) ->
                 if (item.get("url")?.takeUnless { it.isJsonNull }?.asString?.isNotBlank() == true &&
                     item.get("type")?.takeUnless { it.isJsonNull }?.asString == "hls") {
@@ -44,9 +54,10 @@ internal class VidboxClient(
     }
 
     fun resolve(target: TmdbPlayback, sourceId: String = DEFAULT_SOURCE.id): ResolvedPlayback {
-        return when (sourceId) {
-            DEFAULT_SOURCE.id -> max.resolve(target)
-            VIDPRO_SOURCE.id -> vidpro.resolve(target)
+        return when {
+            sourceId == DEFAULT_SOURCE.id -> max.resolve(target)
+            sourceId == VIDPRO_SOURCE.id -> vidpro.resolve(target)
+            sourceId.startsWith("xpass:") -> xpass.resolve(target, sourceId)
             else -> rock.resolve(target to sourceId)
         }
     }

@@ -61,7 +61,7 @@ class VidboxClientTest {
             max.enqueue(MockResponse().setBody("""{"src":"${max.url("/landing")}"}"""))
             max.enqueue(MockResponse().setBody("""<script>window.CFG = {"playerUrl":"/player"};</script>"""))
             val configKey = if (target.type == MediaType.TV) "streamBase" else "api"
-            max.enqueue(MockResponse().setBody("""<script>window.CONFIG = {"$configKey":"${max.url("/api/streams")}"};</script>"""))
+            max.enqueue(MockResponse().setBody("""<script>window.CONFIG = {"$configKey":"${max.url("/api/streams")}","apiToken":"fresh-api-token"};</script>"""))
             max.enqueue(MockResponse().setBody("""{"data":{"stream_urls":"$encrypted"},"vs":{"wasm_url":"${max.url("/decoder.wasm")}"}}"""))
             max.enqueue(MockResponse().setBody(okio.Buffer().write(wasm)))
             max.enqueue(MockResponse().setBody("stream-token"))
@@ -79,11 +79,12 @@ class VidboxClientTest {
             assertEquals("/player", max.takeRequest().path)
             val streamRequest = max.takeRequest().requestUrl!!
             assertEquals("/api/streams", streamRequest.encodedPath)
+            assertEquals("fresh-api-token", streamRequest.queryParameter("api_token"))
             assertEquals(target.season?.toString(), streamRequest.queryParameter("season"))
             assertEquals(target.episode?.toString(), streamRequest.queryParameter("episode"))
             if (target.type == MediaType.TV) assertTrue("stream_urls" in streamRequest.queryParameterNames)
             assertEquals("/decoder.wasm", max.takeRequest().path)
-            assertEquals("/generate.php", max.takeRequest().path)
+            assertEquals("/generate.php?api_token=fresh-api-token", max.takeRequest().path)
             assertEquals("/master.m3u8?token=stream-token", max.takeRequest().path)
         }
     }
@@ -96,10 +97,11 @@ class VidboxClientTest {
             val encrypted = encryptAlternativeUrl(playlist)
             val sources = """{"Nova":{"url":null,"type":null},"Atlas":{"url":"$encrypted","language":"English","type":"hls"}}"""
             alternative.enqueue(MockResponse().setBody(sources))
+            alternative.enqueue(MockResponse().setResponseCode(404)) // Optional Nebula discovery is unavailable.
             alternative.enqueue(MockResponse().setBody(sources))
             alternative.enqueue(MockResponse().setBody("#EXTM3U\n#EXT-X-VERSION:7"))
 
-            val client = VidboxClient(alternativeOrigin = alternative.url("/"))
+            val client = VidboxClient(alternativeOrigin = alternative.url("/"), xpassOrigin = alternative.url("/"))
             val available = client.sources(TmdbPlayback("27205"))
             val atlas = available.single { it.label == "VidRock • Atlas" }
             val resolved = client.resolve(TmdbPlayback("27205"), atlas.id)
@@ -107,6 +109,7 @@ class VidboxClientTest {
             assertEquals(playlist, resolved.streamUrl)
             assertEquals(alternative.url("/").toString().removeSuffix("/"), resolved.requestHeaders["Origin"])
             assertEquals("/api/movie/27205", alternative.takeRequest().path)
+            assertEquals("/e/movie/27205", alternative.takeRequest().path)
             assertEquals("/api/movie/27205", alternative.takeRequest().path)
             assertEquals("/atlas/master.m3u8", alternative.takeRequest().path)
         }

@@ -27,16 +27,35 @@ use the shared application paths and site-scoped persistence.
 
 ## Playback support
 
-**Server 1 is currently the supported/default source.** The website initially
-selects Server 2; its embed chain and Server 3's chain are not implemented.
-Unsupported sources are not advertised as playable, and the resolver never
-silently switches servers. Some Server 1 titles may be unavailable upstream.
+The Source menu retains the implemented servers listed on the selected page,
+without probing individual streams to hide currently failing choices:
+
+| Source | Support |
+| --- | --- |
+| Server 1 | Default; direct Ployan HLS for movies and episodes |
+| Server 2 • VidSrc | Movies; Ployan's authenticated TMDB mapping, then the VidSrc/Max native request chain |
+| Server 3 | Movies; Ployan's authenticated Vidara player descriptor and native stream API |
+
+The website initially selects Server 2. The app currently supports its VidSrc
+backend; Emboser's other embedded backends are not exposed. Server 3 has protocol
+ID `5`, matching the page button. The resolver never silently switches servers.
+A failure for one title does not remove a server from another title's menu.
 
 `PloyanExtractor` reproduces the known public request encoding with native
 cryptography, requests a fresh HLS URL for the selected title/episode, and supplies
 the player origin, referer and user agent to Media3. It does not execute provider
-JavaScript or use a WebView. Unknown response shapes and embedded-player responses
-fail explicitly. The timestamped protocol requires a correctly set device clock.
+JavaScript or use a WebView. Unknown response shapes and unrecognized embedded
+players fail explicitly. The timestamped protocol requires a correctly set device clock.
+
+For Server 2, the TMDB movie identity comes from the authenticated player response,
+never from a title's slug. The Max extractor forwards the freshly supplied API
+token to its stream API and stream-token service.
+
+Server 3 decrypts the selected Vidara descriptor, removes the wrapper's trailing
+timestamp and posts its opaque file code to `/api/stream`. The JSON request uses
+the Android device profile and baseline codecs. It follows the returned HLS URL
+with the player's Origin, Referer and user agent. POST bodies and responses are
+bounded; POST redirects are rejected. No player scripts are executed.
 
 Quality choices reflect the actual stream's variants. Some responses are a single
 media playlist, so a title's HD badge is not a guarantee of 1080p or the best copy
@@ -58,7 +77,28 @@ The site does not currently provide normalized IMDb metadata to the online
 subtitle search. Hosted language availability depends on the selected item;
 the investigated movie and episode offered English only.
 
+Server 3 also exposes French/English WebVTT or SRT tracks from the selected media
+CDN. Tracks keep stable provider IDs and use the shared playback headers,
+selection and persistence behavior. Other languages and unrelated destinations
+are filtered out.
+
 ## Evidence
+
+On 2026-11-09, You Can See Everything's Server 1 playlist returned HTTP 502.
+Both additional sources played natively in the actual app on the Android TV
+API 31 emulator after seeking to one minute:
+
+| Source | Rendered frames | Advancing samples | Video width |
+| --- | --- | --- | --- |
+| Server 2 • VidSrc | 151 | 15 | 640 |
+| Server 3 | 147 | 15 | 1920 |
+
+Server 3 supplied an English WebVTT track. These checks do not establish full-film
+availability or playback for other titles. Emulator preferences and bookmarks
+were restored. Temporary live probes were removed; their captures and media URLs
+are not fixtures. Fixture tests cover all listed movie-server choices, the actual
+page playback ID, authenticated mappings, explicit selection without fallback,
+the JSON stream request, media headers and hosted subtitle ownership/languages.
 
 See [the feasibility investigation](123movies-feasibility.md) for the observed
 request chain, catalog identity traps and initial native playback proof.

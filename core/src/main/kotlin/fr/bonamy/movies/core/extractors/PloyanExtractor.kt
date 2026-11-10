@@ -12,23 +12,58 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
-/** Ployan's public direct-player protocol. No downloaded JavaScript is executed. */
+/** Ployan's direct streams and authenticated player descriptors. No provider script execution. */
 internal class PloyanExtractor(private val network: HttpTransport) {
     private val origin = "https://ployan.me/".toHttpUrl()
     private val headers = mapOf("Referer" to origin.toString(), "Origin" to "https://ployan.me",
         "User-Agent" to HttpTransport.USER_AGENT)
 
-    fun resolve(mid: String, episode: Int): ResolvedPlayback {
-        require(mid.matches(Regex("[0-9]+")) && episode > 0)
-        val payload = "$mid+$episode+1+${System.currentTimeMillis() / 1000}"
+    fun resolve(mid: String, episode: Int, server: Int = 1): ResolvedPlayback {
+        require(mid.matches(Regex("[0-9]+")) && episode > 0 && server in listOf(1, 2, 5))
+        val payload = "$mid+$episode+$server+${System.currentTimeMillis() / 1000}"
         val response = JsonParser.parseString(network.text(origin.resolve("get/${encode(payload)}")!!, headers)).asJsonObject
-        if (response.get("code")?.asInt != 200 || response.get("mode")?.asString != "direct")
-            throw IOException("Server 1 has no supported stream for this title")
+        if (response.get("code")?.asInt != 200) throw IOException("The selected server has no stream for this title")
+        if (response.get("mode")?.asString == "embed") {
+            val embed = decodeEmbed(response.string("info"))
+            return when (server) {
+                2 -> {
+                    // The decrypted player response owns this TMDB mapping, not the page slug.
+                    val id = Regex("movie/([0-9]+)-[0-9]{10}").matchEntire(embed)?.groupValues?.get(1)
+                        ?: throw IOException("Server 2 returned an unsupported player identity")
+                    MaxExtractor(network, "https://vidsrc.sh/".toHttpUrl()).resolve(TmdbPlayback(id))
+                }
+                5 -> {
+                    val url = embed.toHttpUrl().let { raw ->
+                        raw.newBuilder().encodedPath(raw.encodedPath.replace(Regex("-[0-9]{10}$"), "")).build()
+                    }
+                    VidaraExtractor(network).resolve(url)
+                }
+                else -> throw IOException("The selected server returned an unsupported player")
+            }
+        }
+        if (response.get("mode")?.asString != "direct") throw IOException("The selected server returned an unsupported response")
         val token = response.string("info")
         if (!token.matches(Regex("[a-fA-F0-9]+-[a-fA-F0-9]+-[a-fA-F0-9]+")) || token.length > 4096)
             throw IOException("Ployan returned an invalid stream")
         return ResolvedPlayback(origin.resolve("hls/$token/master.m3u8")!!.toString(), headers,
             subtitles = subtitles(mid, episode))
+    }
+
+    private fun decodeEmbed(value: String): String {
+        if (value.length > 4096 || !value.matches(Regex("[a-fA-F0-9]{16}-[a-fA-F0-9]{24}-[a-fA-F0-9]{32,}"))) {
+            throw IOException("Ployan returned an invalid player descriptor")
+        }
+        return try {
+            val parts = value.split('-').map { part -> part.chunked(2).map { it.toInt(16).toByte() }.toByteArray() }
+            val spec = PBEKeySpec("player".toCharArray(), parts[0], 1000, 256)
+            val key = try { SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded }
+                finally { spec.clearPassword() }
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, parts[1]))
+            cipher.doFinal(parts[2]).toString(Charsets.UTF_8)
+        } catch (error: java.security.GeneralSecurityException) {
+            throw IOException("Could not authenticate the selected player", error)
+        }
     }
 
     private fun subtitles(mid: String, episode: Int): List<PlaybackSubtitle> {

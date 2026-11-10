@@ -26,12 +26,13 @@ internal class HttpTransport(http: OkHttpClient = defaultClient(), private val a
     fun bytes(url: HttpUrl, headers: Map<String, String> = emptyMap(), limit: Int = 8 * 1024 * 1024,
         redirectAllowed: (HttpUrl) -> Boolean = { true }): ByteArray = request(url, headers, limit, redirectAllowed, null)
 
-    /** Binary envelope POST. Reject redirects instead of forwarding an encrypted body to another endpoint. */
+    /** Bounded POST, with redirects rejected instead of forwarding its body to another endpoint. */
     fun postBytes(url: HttpUrl, body: ByteArray, headers: Map<String, String> = emptyMap(),
-        limit: Int = 1024 * 1024): ByteArray = request(url, headers, limit, { false }, body)
+        limit: Int = 1024 * 1024, contentType: String = "text/plain;charset=UTF-8"): ByteArray =
+        request(url, headers, limit, { false }, body, contentType)
 
     private fun request(url: HttpUrl, headers: Map<String, String>, limit: Int,
-        redirectAllowed: (HttpUrl) -> Boolean, postBody: ByteArray?): ByteArray {
+        redirectAllowed: (HttpUrl) -> Boolean, postBody: ByteArray?, contentType: String = "text/plain;charset=UTF-8"): ByteArray {
         require(limit > 0 && (postBody == null || postBody.size <= 1024 * 1024))
         var target = url
         var requestHeaders = headers
@@ -40,7 +41,7 @@ internal class HttpTransport(http: OkHttpClient = defaultClient(), private val a
             if (!accepts(target)) throw IOException("Unsupported network destination")
             val request = Request.Builder().url(target).header("User-Agent", USER_AGENT)
             requestHeaders.forEach { (key, value) -> request.header(key, value) }
-            if (postBody != null) request.post(postBody.toRequestBody("text/plain;charset=UTF-8".toMediaType()))
+            if (postBody != null) request.post(postBody.toRequestBody(contentType.toMediaType()))
             client.newCall(request.build()).execute().use { response ->
                 if (response.code in listOf(301, 302, 303, 307, 308)) {
                     if (postBody != null) throw IOException("POST redirect rejected")

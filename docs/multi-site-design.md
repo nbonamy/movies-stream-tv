@@ -16,7 +16,7 @@ the same media type; section identity is independent of playback identity.
 | `sites/kopoti` | Category pagination, unified search, HTML details and ShareCloudy source discovery |
 | `sites/movies123` | Movie/season catalogs, unified search, season grouping and opaque page/episode identities |
 | `sites/cinejoy` | TMDB catalogs and unified search, season/episode identity and Wing source policy |
-| `extractors` | Max, Vidpro, VidRock, ShareCloudy, Ployan and Wing request/configuration chains |
+| `extractors` | Max, Vidpro, VidRock, Xpass, Vidara, ShareCloudy, Ployan and Wing request/configuration chains |
 | `HttpTransport` | Bounded responses, per-request timeouts, cancellation checks and validated redirects/destinations |
 | `SubtitleClient` | French/English lookup and download from normalized IMDb/episode metadata |
 | `:app` | Native views, Media3 playback, captured request sessions and site-scoped persistence |

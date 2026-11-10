@@ -28,9 +28,9 @@ Screenshots are from the Android TV app. Artwork and metadata come from the sele
 
 | Site | Sections | Playback support |
 | --- | --- | --- |
-| Vidbox | Movies, TV Shows | Multiple supported sources |
+| Vidbox | Movies, TV Shows | Max, Vidpro, VidRock; Nebula movie mirrors |
 | Kopoti | À l'affiche, Spectacles | ShareCloudy |
-| 123Movies | Movies, TV Shows | Server 1 |
+| 123Movies | Movies, TV Shows | Server 1; Server 2 • VidSrc and Server 3 for movies |
 | Cinejoy | Movies, TV Shows | Nebula (default), Lisbon, Solara, Athens; availability varies by title |
 
 Use the hamburger menu to switch sites and sections. Each site remembers its

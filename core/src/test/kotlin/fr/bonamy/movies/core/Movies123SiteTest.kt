@@ -14,6 +14,83 @@ import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
 class Movies123SiteTest {
+    @Test fun movieOffersListedServersWithoutProbingTitleAvailabilityAndResolvesServerThree() = runBlocking<Unit> {
+        MockWebServer().use { server ->
+            val http = OkHttpClient.Builder().addInterceptor { chain ->
+                val request = chain.request()
+                chain.proceed(if (request.url.host in listOf("ployan.me", "vidara.to")) request.newBuilder()
+                    .url(server.url(request.url.encodedPath)).build() else request)
+            }.build()
+            val site = Movies123Site(http, server.url("/"))
+            val item = PlayableRef(TitleRef("123movies", "opaque-film-999", MediaType.MOVIE))
+            val page = """<div id="mid" data-mid="42"></div><button id="srv-1"></button><button id="srv-2"></button><button id="srv-5"></button>"""
+            server.enqueue(html(page))
+            val options = site.sources(item)
+            assertEquals(listOf("1", "2", "5"), options.sources.map { it.id })
+            assertEquals("Server 3", options.sources.last().label)
+            assertEquals("1", options.defaultSourceId)
+            assertEquals(1, server.requestCount)
+            server.takeRequest()
+            server.enqueue(html(page))
+            server.enqueue(html("""{"code":200,"mode":"embed","info":"${encryptedEmbed("https://vidara.to/e/opaque-code-2000000000")}"}"""))
+            server.enqueue(html("""{"streaming_url":"${server.url("/movie/master.m3u8")}","subtitles":[]}"""))
+            server.enqueue(html("#EXTM3U\n#EXT-X-VERSION:7"))
+            val playback = site.resolve(item, "5")
+            assertEquals(server.url("/movie/master.m3u8").toString(), playback.streamUrl)
+            assertEquals("https://vidara.to/e/opaque-code", playback.requestHeaders["Referer"])
+            server.takeRequest()
+            val request = server.takeRequest()
+            assertEquals(listOf("42", "1", "5"), decryptedRequest(request).split('+').take(3))
+            val post = server.takeRequest()
+            assertEquals("/api/stream", post.path)
+            assertEquals("opaque-code", com.google.gson.JsonParser.parseString(post.body.readUtf8()).asJsonObject.get("filecode").asString)
+            assertEquals("/movie/master.m3u8", server.takeRequest().path)
+        }
+    }
+
+    @Test fun selectedServerTwoUsesAuthenticatedTmdbMappingAndNeverFallsBack() = runBlocking<Unit> {
+        MockWebServer().use { server ->
+            val http = OkHttpClient.Builder().addInterceptor { chain ->
+                val request = chain.request()
+                chain.proceed(if (request.url.host in listOf("ployan.me", "vidsrc.sh")) request.newBuilder()
+                    .url(server.url(request.url.encodedPath + (request.url.encodedQuery?.let { "?$it" } ?: ""))).build() else request)
+            }.build()
+            val site = Movies123Site(http, server.url("/"))
+            val item = PlayableRef(TitleRef("123movies", "opaque-film-999", MediaType.MOVIE))
+            server.enqueue(html("""<div id="mid" data-mid="42"></div><button id="srv-2"></button>"""))
+            server.enqueue(html("""{"code":200,"mode":"embed","info":"${encryptedEmbed("movie/1765072-2000000000")}"}"""))
+            server.enqueue(MockResponse().setResponseCode(404))
+            assertThrows(IOException::class.java) { runBlocking { site.resolve(item, null) } }
+            server.takeRequest()
+            assertEquals(listOf("42", "1", "2"), decryptedRequest(server.takeRequest()).split('+').take(3))
+            val selected = server.takeRequest().requestUrl!!
+            assertEquals("/vs_src.php", selected.encodedPath)
+            assertEquals("1765072", selected.queryParameter("id"))
+            assertEquals(3, server.requestCount)
+        }
+    }
+
+    private fun encryptedEmbed(value: String): String {
+        val salt = ByteArray(8) { it.toByte() }
+        val iv = ByteArray(12) { (it + 8).toByte() }
+        val key = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            .generateSecret(PBEKeySpec("player".toCharArray(), salt, 1000, 256)).encoded
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+        return listOf(salt, iv, cipher.doFinal(value.toByteArray())).joinToString("-") { bytes ->
+            bytes.joinToString("") { "%02x".format(it.toInt() and 255) }
+        }
+    }
+
+    private fun decryptedRequest(request: RecordedRequest): String {
+        val parts = request.requestUrl!!.pathSegments.last().split('-').map { value -> value.chunked(2).map { it.toInt(16).toByte() }.toByteArray() }
+        val key = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            .generateSecret(PBEKeySpec("player".toCharArray(), parts[0], 1000, 256)).encoded
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, parts[1]))
+        return cipher.doFinal(parts[2]).toString(Charsets.UTF_8)
+    }
+
     @Test fun catalogContinuationAndUnifiedSearchKeepOpaqueSiteIdentities() = runBlocking<Unit> {
         MockWebServer().use { server ->
             val site = Movies123Site(OkHttpClient(), server.url("/"))

@@ -76,16 +76,22 @@ class Movies123Site internal constructor(http: OkHttpClient, private val home: H
 
     override suspend fun sources(item: PlayableRef): PlaybackOptions = io {
         val page = playbackPage(item)
-        if (page.selectFirst("button#srv-1") == null) throw IOException("Server 1 is unavailable")
-        PlaybackOptions(listOf(SOURCE), SOURCE.id)
+        val sources = (if (item.type == MediaType.MOVIE) MOVIE_SOURCES else listOf(SOURCE))
+            .filter { page.selectFirst("button#srv-${it.id}") != null }
+        if (sources.isEmpty()) throw IOException("No supported servers are listed")
+        PlaybackOptions(sources, sources.first().id)
     }
 
     override suspend fun resolve(item: PlayableRef, sourceId: String?): ResolvedPlayback = io {
-        require(sourceId == null || sourceId == SOURCE.id) { "Unsupported 123Movies source" }
+        val supported = if (item.type == MediaType.MOVIE) MOVIE_SOURCES else listOf(SOURCE)
+        require(sourceId == null || supported.any { it.id == sourceId }) { "Unsupported 123Movies source" }
         val page = playbackPage(item)
+        val selected = sourceId ?: supported.firstOrNull { page.selectFirst("button#srv-${it.id}") != null }?.id
+            ?: throw IOException("No supported servers are listed")
+        if (page.selectFirst("button#srv-$selected") == null) throw IOException("The selected server is unavailable")
         val mid = page.selectFirst("#mid")?.attr("data-mid")?.takeIf { it.matches(NUMBER) }
             ?: throw IOException("Missing 123Movies playback identity")
-        extractor.resolve(mid, item.episode ?: 1)
+        extractor.resolve(mid, item.episode ?: 1, selected.toInt())
     }
 
     private fun playbackPage(item: PlayableRef): Document {
@@ -190,6 +196,7 @@ class Movies123Site internal constructor(http: OkHttpClient, private val home: H
     companion object {
         const val ID = "123movies"
         private val SOURCE = PlaybackSource("1", "Server 1")
+        private val MOVIE_SOURCES = listOf(SOURCE, PlaybackSource("2", "Server 2 • VidSrc"), PlaybackSource("5", "Server 3"))
         private val SLUG = Regex("[a-z0-9]+(?:-[a-z0-9]+)*")
         private val NUMBER = Regex("[0-9]+")
         private val SEASON_SLUG = Regex("(.+)-season-([0-9]+)-[0-9]+")
