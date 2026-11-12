@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.graphics.Outline
 import android.util.TypedValue
 import android.view.LayoutInflater
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
@@ -11,6 +12,8 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.ProgressBar
 import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.core.view.doOnNextLayout
 
 internal data class MediaCard(val id: Any, val title: String, val image: String, val progress: Int? = null,
     val subtitle: String? = null)
@@ -68,6 +71,32 @@ internal class MediaCardAdapter(
             else setAutoSizeTextTypeUniformWithConfiguration(10, 13, 1, TypedValue.COMPLEX_UNIT_SP)
         }
         val holder = Holder(card)
+        card.setOnKeyListener { _, keyCode, event ->
+            if (event.action != KeyEvent.ACTION_DOWN ||
+                (keyCode != KeyEvent.KEYCODE_DPAD_LEFT && keyCode != KeyEvent.KEYCODE_DPAD_RIGHT)) return@setOnKeyListener false
+            val grid = card.parent as? RecyclerView ?: return@setOnKeyListener false
+            val layout = grid.layoutManager as? GridLayoutManager ?: return@setOnKeyListener false
+            val position = holder.bindingAdapterPosition
+            if (position == RecyclerView.NO_POSITION) return@setOnKeyListener false
+            val right = keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+            val span = layout.spanSizeLookup.getSpanIndex(holder.absoluteAdapterPosition, layout.spanCount)
+            val atEdge = if (right) span == layout.spanCount - 1 || position == items.lastIndex else span == 0
+            if (!atEdge) return@setOnKeyListener false
+            val next = position + if (right) 1 else -1
+            if (next in items.indices) {
+                val absolute = holder.absoluteAdapterPosition + next - position
+                val target = grid.findViewHolderForAdapterPosition(absolute)?.itemView
+                if (target != null) target.requestFocus()
+                else {
+                    grid.doOnNextLayout {
+                        if (grid.isShown && grid.hasFocus())
+                            grid.findViewHolderForAdapterPosition(absolute)?.itemView?.requestFocus()
+                    }
+                    grid.scrollToPosition(absolute)
+                }
+            }
+            true
+        }
         card.setOnClickListener {
             holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }?.let { select(it, card) }
         }

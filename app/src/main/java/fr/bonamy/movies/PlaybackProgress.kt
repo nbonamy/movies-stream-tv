@@ -39,11 +39,19 @@ internal class PlaybackProgress(private val preferences: SharedPreferences) {
 
     fun remove(target: PlayableRef) { preferences.edit().remove(target.key).apply() }
 
+    fun restart(target: PlayableRef): Boolean {
+        val previous = read(target.key) ?: return false
+        write(previous.copy(position = 0, duration = 0, updatedAt = System.currentTimeMillis(),
+            queued = true, awaitingNext = false, queuedFrom = null))
+        return true
+    }
+
     /** Explicit saving never overwrites an existing position or subtitle choice. */
-    fun queue(movie: Title, target: PlayableRef, episodeName: String?, artwork: String): Boolean {
+    fun queue(movie: Title, target: PlayableRef, episodeName: String?, artwork: String,
+        subtitle: SubtitleSelection? = null): Boolean {
         require(movie.ref == target.title)
         if (read(target.key) != null) return false
-        write(PlaybackBookmark(movie, target, episodeName, artwork, 0, 0, System.currentTimeMillis(), queued = true))
+        write(PlaybackBookmark(movie, target, episodeName, artwork, 0, 0, System.currentTimeMillis(), subtitle, queued = true))
         return true
     }
 
@@ -65,11 +73,19 @@ internal class PlaybackProgress(private val preferences: SharedPreferences) {
     }
 
     fun save(movie: Title, target: PlayableRef, episodeName: String?, artwork: String,
-        position: Long, duration: Long, ended: Boolean = false, subtitle: SubtitleSelection? = null) {
+        position: Long, duration: Long, ended: Boolean = false, subtitle: SubtitleSelection? = null,
+        allowCreate: Boolean = true) {
         require(movie.ref == target.title)
         // Unprepared/erroring streams must not erase a previously saved position.
         if (!ended && (position < 0 || duration <= 0)) return
         val previous = read(target.key)
+        if (!allowCreate) {
+            if (previous == null) return
+            if (previous.queued && !ended) {
+                if (previous.subtitle != subtitle) write(previous.copy(subtitle = subtitle))
+                return
+            }
+        }
         val completed = ended || position.toDouble() > duration * 0.95
         val successor = if (target.type == MediaType.TV) list().firstOrNull { it.queued && it.queuedFrom == target.key } else null
         if (target.type == MediaType.TV && completed) {
@@ -87,12 +103,6 @@ internal class PlaybackProgress(private val preferences: SharedPreferences) {
         // Seeking back into the previous episode cancels only its automatically queued successor.
         successor?.let { preferences.edit().remove(it.target.key).apply() }
         if (completed) { remove(target); return }
-        if (position <= 30_000) {
-            if (previous?.queued == true) {
-                if (previous.subtitle != subtitle) write(previous.copy(subtitle = subtitle))
-            } else remove(target)
-            return
-        }
         if (previous?.let { !it.queued && !it.awaitingNext && it.position == position && it.duration == duration && it.subtitle == subtitle } == true) return
         write(PlaybackBookmark(movie, target, episodeName, artwork, position, duration, System.currentTimeMillis(), subtitle))
     }
@@ -127,7 +137,7 @@ internal class PlaybackProgress(private val preferences: SharedPreferences) {
         require(target.key == key && when {
             queued -> !awaitingNext && position == 0L && duration == 0L
             awaitingNext -> type == MediaType.TV && position >= 0 && duration >= 0
-            else -> position > 30_000 && duration > 0 && position <= duration * 0.95
+            else -> position >= 0 && duration > 0 && position <= duration * 0.95
         })
         PlaybackBookmark(movie, target, data.optString("episodeName").takeIf { it.isNotBlank() },
             data.optString("artwork"), position, duration, data.getLong("updatedAt"),

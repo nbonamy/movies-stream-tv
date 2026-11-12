@@ -16,11 +16,12 @@ Colors, dimensions, font weights, and styles are imported from the corresponding
 
 ## Adaptations
 
-- The gallery layout uses `LinearLayout` in place of `NonOverlappingLinearLayout`; provider-inapplicable badges and episode tags are removed. Card sizing, artwork, title styling, focus foreground, and elevation come from MediaStation. Continue watching uses landscape cards with MediaStation's resume progress bar and a small site label; TV entries show the season and episode in their title. Movies and TV share one row across all sites. Long-press opens the existing MediaStation action dialog with Remove.
+- The gallery layout uses `LinearLayout` in place of `NonOverlappingLinearLayout`; provider-inapplicable badges and episode tags are removed. Card sizing, artwork, title styling, focus foreground, and elevation come from MediaStation. Continue watching uses landscape cards with MediaStation's resume progress bar and a small site label; TV entries show the season and episode in their title. Movies and TV share one row across all sites. Long-press opens the existing MediaStation action dialog with Restart from beginning followed by Remove.
 - The details screen follows the approved full-screen artwork concept: provider backdrop (poster fallback), a dark left scrim, and a compact left column with type, larger title, year/rating, larger synopsis, and Watch/Episodes below. It retains MediaStation typography, colors, and action focus styling. Titles allow two lines, synopses five; the content can scroll if needed on smaller viewports. Missing metadata collapses without leaving a separator. No separate poster or library-management actions are rendered.
 - `DialogUtils` changes package and theme lookup, and omits the unused legacy builder. Bottom positioning, selected/focused styling, dim amount, scrolling, and entrance/dismissal animations are preserved.
 - Android 26–27 uses `textStyle="bold"` for the action label; Android 28+ retains MediaStation's original font-weight style.
 - Universal search uses native Leanback vertical/horizontal grids, one row per site, with the existing MediaStation cards. It uses the same native search widget, input background, font, and speech-orb colors as Music.
+- Catalog and episode grids wrap horizontally between rows: Right on the last card in a row focuses the next row's first card; Left on the first card focuses the previous row's last card. Focus stays put at the beginning and end of the list.
 - Header focus highlights the menu icon and current title together with a filled background and brighter foreground. The search action reveals a Search label to the left of its icon while focused; its reserved space keeps the header stable when focus moves.
 
 ## Playback behavior

@@ -6,10 +6,12 @@ Landscape cards show movie backdrops or episode artwork, a site label, and a
 progress bar copied from MediaStation. TV titles include the season/episode and
 episode name. The row scrolls with the catalog and is hidden during search or when empty.
 
-Long-press OK/Select on a card to open its menu. Remove clears only that item's
+Long-press OK/Select on a card to open its menu. **Restart from beginning** resets
+its saved position to 0:00 without starting playback, keeping its subtitle choice.
+**Remove** clears only that item's
 bookmark, including its saved position and subtitle selection. It stays absent
 until watched again past the resume threshold. Back dismisses the menu without
-removing anything. Focus moves to a neighboring card after removal, or to the
+changing anything. Focus stays on a restarted card and moves to a neighboring card after removal, or to the
 catalog when the row becomes empty.
 
 Selecting a Continue watching card opens the saved movie or episode directly.
@@ -29,7 +31,16 @@ to the device; uninstalling or clearing app data removes it.
 
 Save every five seconds and on pause, seek, player release, and activity stop.
 Backgrounding pauses playback. An unresolved or failed stream cannot overwrite
-an existing bookmark. Ordinary watched progress becomes resumable after 30 seconds.
+an existing bookmark. New titles become resumable after 30 seconds of actual
+playback. Loading, buffering, pauses and skipped positions do not count; switching
+sources keeps the accumulated watch time for the current title.
+
+Leaving a new title with Back before those 30 seconds shows **OK to save for later,
+Back to discard**. OK saves it at 0:00 even if playback was skipped ahead.
+Back discards it and exits. Existing bookmarks do not need this
+confirmation and retain their progress.
+Playback or source errors exit without offering to save for later.
+
 More than 95% or actual completion removes a movie's bookmark. For TV, it queues
 the next episode at **0:00**, including across seasons. A final listed episode
 removes its bookmark without queuing another.
@@ -54,7 +65,7 @@ are never reset by this action.
 
 Explicitly saved and automatically queued entries remain in Continue watching
 until removed, completed or replaced by watched progress. Starting one and stopping
-within the first 30 seconds keeps its 0:00 entry. After 30 seconds the usual position
+within the first 30 seconds of actual playback keeps its 0:00 entry. After 30 seconds the usual position
 and subtitle checkpoints take over. These entries do not require a media duration
 or a resolved stream URL to be saved.
 
@@ -89,7 +100,10 @@ Android instrumentation tests exercise real SharedPreferences serialization,
 independent site/movie/episode keys, legacy migration, opaque IDs, site preferences,
 universal ordering, targeted removal, incomplete stream
 metadata, completion thresholds, zero-position entries, pending transitions,
-subtitle-language carryover, stale lookup results and malformed records. Build the app and test
+subtitle-language carryover, stale lookup results and malformed records. Native
+remote-action tests cover restarting a card, menu order and focus, brief-preview
+Back/OK choices, and existing-bookmark behavior. A controlled playback clock checks
+the exact 30-second boundary and excludes paused time and seek jumps. Build the app and test
 APK with `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest`, install both
 on the emulator, and run:
 

@@ -25,6 +25,75 @@ class PlaybackProgressTest {
     @Before fun clearBefore() { preferences.edit().clear().commit() }
     @After fun clearAfter() { preferences.edit().clear().commit() }
 
+    @Test fun restartResetsOnlySelectedBookmarkAndRetainsItsMetadataAndSubtitle() {
+        val store = PlaybackProgress(preferences)
+        val film = PlayableRef(movie.ref)
+        val other = PlayableRef(movie.copy(siteId = "other").ref)
+        val subtitle = SubtitleSelection.Embedded("fr", "track", "French", 0)
+        store.save(movie, film, null, "artwork", 180_000, 900_000, subtitle = subtitle)
+        store.save(movie.copy(siteId = "other"), other, null, "other-art", 240_000, 900_000)
+        assertTrue(store.restart(film))
+        val restarted = PlaybackProgress(preferences).bookmark(film)!!
+        assertEquals(0L, restarted.position)
+        assertEquals(movie, restarted.movie)
+        assertEquals("artwork", restarted.artwork)
+        assertEquals(subtitle, restarted.subtitle)
+        assertTrue(restarted.queued)
+        assertEquals(240_000L, store.position(other))
+        assertFalse(store.restart(PlayableRef(movie.copy(id = "missing").ref)))
+        store.save(movie, film, null, "artwork", 10_000, 900_000, allowCreate = false)
+        assertEquals(0L, PlaybackProgress(preferences).position(film))
+    }
+
+    @Test fun restartInvalidatesPendingEpisodeContinuation() {
+        val store = PlaybackProgress(preferences)
+        val current = PlayableRef(show.ref, "2/3", 2, 3)
+        val next = Episode(PlayableRef(show.ref, "2/4", 2, 4), "Next", "", "")
+        store.save(show, current, "Third", "still", 960_000, 1_000_000)
+        val pending = store.bookmark(current)!!
+        assertTrue(store.restart(current))
+        assertFalse(store.advance(pending, next))
+        assertEquals(current, store.list().single().target)
+        assertFalse(store.list().single().awaitingNext)
+        assertEquals(0L, store.position(current))
+    }
+
+    @Test fun briefPlaybackCannotCreateBookmarkEvenAfterSeekingForward() {
+        var time = 0L
+        val watch = PlaybackWatchTime { time }
+        val store = PlaybackProgress(preferences)
+        val film = PlayableRef(movie.ref)
+        time = 60_000 // Loading is not watched time.
+        watch.setPlaying(true)
+        time += 29_999
+        store.save(movie, film, null, "poster", 180_000, 900_000, allowCreate = watch.canCreateBookmark)
+        assertNull(store.bookmark(film))
+        time++
+        store.save(movie, film, null, "poster", 15_000, 900_000, allowCreate = watch.canCreateBookmark)
+        assertEquals(15_000L, PlaybackProgress(preferences).position(film))
+        watch.reset()
+        store.save(movie, film, null, "poster", 20_000, 900_000, allowCreate = watch.canCreateBookmark)
+        assertEquals(20_000L, store.position(film)) // Brief resumes retain existing progress.
+    }
+
+    @Test fun pausedAndBufferingTimeDoesNotCountAndSourceChangesRetainWatchedTime() {
+        var time = 0L
+        val watch = PlaybackWatchTime { time }
+        watch.setPlaying(true)
+        time += 10_000
+        watch.setPlaying(false)
+        time += 60_000
+        assertFalse(watch.canCreateBookmark)
+        watch.setPlaying(true)
+        time += 19_999
+        assertFalse(watch.canCreateBookmark)
+        watch.setPlaying(true) // Repeated callbacks must not reset the interval.
+        time++
+        assertTrue(watch.canCreateBookmark)
+        watch.reset()
+        assertFalse(watch.canCreateBookmark)
+    }
+
     @Test fun reopensMoviesAndEpisodesInOneRecentList() {
         val store = PlaybackProgress(preferences)
         val film = PlayableRef(movie.ref)
@@ -52,7 +121,7 @@ class PlaybackProgressTest {
         assertEquals(setOf(film, first, second), reopened.list().map { it.target }.toSet())
     }
 
-    @Test fun retainsProgressOnFailedLoadsAndRemovesUnstartedOrCompletedItems() {
+    @Test fun retainsProgressOnFailedLoadsAndSeekingBackAndRemovesCompletedItems() {
         val store = PlaybackProgress(preferences)
         val target = PlayableRef(movie.ref)
         fun save(position: Long, duration: Long = 1_000_000, ended: Boolean = false) =
@@ -62,7 +131,7 @@ class PlaybackProgressTest {
         save(-1)
         assertEquals(120_000L, store.position(target))
         save(30_000)
-        assertTrue(store.list().isEmpty())
+        assertEquals(30_000L, store.position(target))
         save(950_000)
         assertEquals(950_000L, store.position(target))
         save(950_001)
@@ -130,7 +199,7 @@ class PlaybackProgressTest {
         assertEquals(setOf(film, episode), reopened.list().map { it.target }.toSet())
         assertTrue(reopened.list().all { it.position == 0L && it.queued })
         reopened.save(show, episode, "Pilot", "still", 0, -1)
-        reopened.save(show, episode, "Pilot", "still", 10_000, 900_000)
+        reopened.save(show, episode, "Pilot", "still", 10_000, 900_000, allowCreate = false)
         assertTrue(PlaybackProgress(preferences).bookmark(episode)!!.queued)
         reopened.save(show, episode, "Pilot", "still", 120_000, 900_000)
         assertFalse(reopened.queue(show, episode, "Pilot", "still"))
@@ -158,7 +227,7 @@ class PlaybackProgressTest {
         assertEquals("next-still", queued.artwork)
         assertEquals(0L, queued.position)
         assertEquals(SubtitleSelection.Language("fr"), queued.subtitle)
-        store.save(show, next.target, next.name, next.still, 1000, 900_000, subtitle = queued.subtitle)
+        store.save(show, next.target, next.name, next.still, 1000, 900_000, subtitle = queued.subtitle, allowCreate = false)
         assertEquals(next.target, PlaybackProgress(preferences).list().single().target)
         store.save(show, next.target, next.name, next.still, 150_000, 900_000, subtitle = queued.subtitle)
         assertEquals(150_000L, PlaybackProgress(preferences).position(next.target))

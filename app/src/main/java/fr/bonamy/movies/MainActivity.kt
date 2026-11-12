@@ -138,6 +138,9 @@ class MainActivity : ComponentActivity() {
     private var player: ExoPlayer? = null
     private var progressJob: Job? = null
     private var playbackReady = false
+    private var playbackFailed = false
+    private val playbackWatchTime = PlaybackWatchTime { android.os.SystemClock.elapsedRealtime() }
+    private var suppressProgressSave = false
     private val playbackProgress by lazy { PlaybackProgress(getSharedPreferences("progress", MODE_PRIVATE)) }
     private var catalogJob: Job? = null
     private var playbackJob: Job? = null
@@ -558,16 +561,17 @@ class MainActivity : ComponentActivity() {
         }, longPress = { index, card ->
             val item = items[index]
             browserDialog?.dismiss()
-            var removed = false
+            var changed = false
             browserDialog = DialogUtils.getDialogBuilder(this, playbackLabel(item.movie, item.target, item.episodeName))
-                .setItems(arrayOf("Remove")) { dialog, _ ->
-                    removed = true
-                    playbackProgress.remove(item.target)
+                .setItems(arrayOf("Restart from beginning", "Remove")) { dialog, which ->
+                    changed = true
+                    if (which == 0) playbackProgress.restart(item.target) else playbackProgress.remove(item.target)
                     dialog.dismiss()
-                    val next = items.getOrNull(index + 1) ?: items.getOrNull(index - 1)
-                    refreshContinueWatching(next?.target ?: item.target)
+                    val focus = if (which == 0) item.target else
+                        (items.getOrNull(index + 1) ?: items.getOrNull(index - 1))?.target
+                    refreshContinueWatching(focus ?: item.target)
                 }.create().also { dialog ->
-                    dialog.setOnDismissListener { if (!removed) card.requestFocus() }
+                    dialog.setOnDismissListener { if (!changed) card.requestFocus() }
                     dialog.show()
                 }
         })
@@ -877,6 +881,9 @@ class MainActivity : ComponentActivity() {
         playbackJob?.cancel()
         optionsDialog?.dismiss()
         releasePlayer()
+        playbackWatchTime.reset()
+        suppressProgressSave = false
+        playbackFailed = false
         currentMovie = movie
         currentTarget = target
         currentEpisodeName = episodeName
@@ -913,6 +920,7 @@ class MainActivity : ComponentActivity() {
                 throw error
             } catch (error: Exception) {
                 if (!playbackSession.isCurrent(ticket)) return@launch
+                playbackFailed = true
                 playerStatus.text = "Could not play this title\n${error.message ?: "Unknown playback error"}"
                 playerStatus.visibility = View.VISIBLE
             }
@@ -922,6 +930,7 @@ class MainActivity : ComponentActivity() {
     private fun startPlayback(stream: ResolvedPlayback, startPosition: Long = 0, autoPlay: Boolean = true,
         subtitle: SubtitleSelection? = currentSubtitleSelection()) {
         releasePlayer()
+        playbackFailed = false
         selectedSubtitle = subtitle
         subtitleToRestore = subtitle
         subtitleContext = stream.subtitleContext
@@ -942,6 +951,7 @@ class MainActivity : ComponentActivity() {
                 if (state == Player.STATE_READY) {
                     endHandled = false
                     playbackReady = true
+                    playbackFailed = false
                     playerStatus.visibility = View.GONE
                     subtitleToRestore?.let { choice ->
                         subtitleToRestore = null
@@ -954,7 +964,9 @@ class MainActivity : ComponentActivity() {
                 }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (player === exoPlayer && !isPlaying) savePlaybackProgress()
+                if (player !== exoPlayer) return
+                playbackWatchTime.setPlaying(isPlaying)
+                if (!isPlaying) savePlaybackProgress()
             }
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo,
                 newPosition: Player.PositionInfo, reason: Int) {
@@ -976,6 +988,7 @@ class MainActivity : ComponentActivity() {
             }
             override fun onPlayerError(error: PlaybackException) {
                 if (player !== exoPlayer) return
+                playbackFailed = true
                 playerStatus.text = "Playback stopped\n${error.errorCodeName}"
                 playerStatus.visibility = View.VISIBLE
             }
@@ -1102,7 +1115,10 @@ class MainActivity : ComponentActivity() {
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                if (playbackSession.isCurrent(ticket)) playerStatus.text = "Could not use ${source.label}\n${error.message ?: "Unknown playback error"}"
+                if (playbackSession.isCurrent(ticket)) {
+                    playbackFailed = true
+                    playerStatus.text = "Could not use ${source.label}\n${error.message ?: "Unknown playback error"}"
+                }
             }
         }
     }
@@ -1400,6 +1416,7 @@ class MainActivity : ComponentActivity() {
         optionsDialog?.dismiss()
         playbackJob?.cancel()
         releasePlayer()
+        suppressProgressSave = false
         val target = currentTarget
         currentMovie = null
         currentTarget = null
@@ -1422,6 +1439,7 @@ class MainActivity : ComponentActivity() {
 
     private fun releasePlayer() {
         savePlaybackProgress()
+        playbackWatchTime.setPlaying(false)
         progressJob?.cancel()
         nextEpisodePrompt.stop()
         playbackReady = false
@@ -1441,10 +1459,11 @@ class MainActivity : ComponentActivity() {
         val currentPlayer = player ?: return
         val target = currentTarget ?: return
         val movie = currentMovie ?: return
-        if (!playbackReady) return
+        if (!playbackReady || suppressProgressSave) return
         playbackProgress.save(movie, target, currentEpisodeName, currentArtwork,
             currentPlayer.currentPosition, currentPlayer.duration,
-            currentPlayer.playbackState == Player.STATE_ENDED, currentSubtitleSelection())
+            currentPlayer.playbackState == Player.STATE_ENDED, currentSubtitleSelection(),
+            allowCreate = playbackWatchTime.canCreateBookmark)
         val pending = playbackProgress.bookmark(target)?.takeIf { it.awaitingNext } ?: return
         val resolved = nextEpisodePrompt.resolved
         if (resolved?.isSuccess == true) playbackProgress.advance(pending, resolved.getOrNull())
@@ -1462,6 +1481,40 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
+    private fun requestClosePlayer() {
+        val movie = currentMovie
+        val target = currentTarget
+        if (movie == null || target == null || playbackFailed || playbackWatchTime.canCreateBookmark ||
+            playbackProgress.bookmark(target) != null) {
+            closePlayer()
+            return
+        }
+        val subtitle = currentSubtitleSelection()
+        suppressProgressSave = true
+        playbackJob?.cancel()
+        val ticket = playbackSession.next()
+        player?.pause()
+        playbackWatchTime.setPlaying(false)
+        val dialog = DialogUtils.getDialogBuilder(this, "OK to save for later, Back to discard")
+            .setOnKeyListener { dialog, keyCode, event ->
+                if (keyCode != KeyEvent.KEYCODE_DPAD_CENTER && keyCode != KeyEvent.KEYCODE_ENTER) {
+                    false
+                } else {
+                    if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) {
+                        playbackProgress.queue(movie, target, currentEpisodeName, currentArtwork, subtitle)
+                        dialog.dismiss()
+                    }
+                    true
+                }
+            }.create()
+        optionsDialog = dialog
+        dialog.setOnDismissListener {
+            if (optionsDialog === dialog) optionsDialog = null
+            if (playbackSession.isCurrent(ticket)) closePlayer()
+        }
+        dialog.show()
+    }
+
     @Deprecated("Android TV uses the physical Back button")
     override fun onBackPressed() {
         detailJob?.cancel()
@@ -1474,7 +1527,7 @@ class MainActivity : ComponentActivity() {
                 playerTopBar.visibility = View.GONE
                 playerView.requestFocus()
             }
-            playerLayer.visibility == View.VISIBLE -> closePlayer()
+            playerLayer.visibility == View.VISIBLE -> requestClosePlayer()
             episodeOverlay.visibility == View.VISIBLE -> {
                 episodeJob?.cancel()
                 episodeOverlay.visibility = View.GONE
